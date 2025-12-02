@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-skills"
+version = "0.1.0"
+description = "A full-stack skills system for AI agents with Unix-style tools."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "mcp>=1.0.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+agent-skills-server = "agent_skills.mcp.server:main"
+
+[project.optional-dependencies]
+# Demo 示例所需依赖
+demo = [
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-mcp-adapters>=0.1.0",
+    "python-dotenv>=1.0.0",
+    "rich>=14.0.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "lint"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=7.0.0",
+]
+lint = [
+    "ruff>=0.6.9",
+    "pyright>=1.1.390",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_skills"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["agent_skills", "tests"]
