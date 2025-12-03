@@ -4,159 +4,146 @@
 
 ## 功能特性
 
-- **极简工具集**: 仅 5 个工具，以 `bash` 为主要入口，减少 prompt 长度
+- **统一前缀工具集**: 6 个 `skills_*` 工具，功能原子化，易于理解
+- **Docker 隔离执行**: 在容器中运行命令，预装常用工具和库
+- **路径镜像 (Path Mirroring)**: 通过挂载宿主机文件系统，Agent 可直接使用绝对路径操作文件，无需上传下载
 - **渐进式披露**: Skills 作为 MCP Resource 暴露，预加载元数据，按需读取内容
-- **安全沙箱**: 基于 workspace 的路径限制、命令黑名单、文件大小限制
 - **MCP 协议**: 标准 MCP Server 接口，可与任何支持 MCP 的 AI 系统集成
-
-## 安装
-
-```bash
-# 在 omne-next 项目中
-uv sync
-
-# 或单独安装
-uv add agent-skills
-```
 
 ## 快速开始
 
-### 启动 MCP Server
+### 使用 Docker（推荐）
+
+使用 **路径镜像** 模式启动，将宿主机根目录（或用户目录）挂载到容器内的相同路径：
 
 ```bash
-# 使用当前目录作为 workspace
-agent-skills-server
+# 构建镜像
+docker build -t agent-skills:latest -f docker/Dockerfile .
 
-# 指定 workspace
-agent-skills-server --workspace /path/to/project
-
-# 只读模式
-agent-skills-server --read-only
-
-# 添加额外的 skills 目录
-agent-skills-server --skills-dir /path/to/skills
+# 运行 MCP Server
+# 关键：-v /Users/me:/Users/me 让容器内的路径与宿主机一致
+docker run -i --rm \
+  -v /Users/me:/Users/me \
+  -v ~/.agent-skills/skills:/skills:ro \
+  agent-skills:latest
 ```
 
-### 在代码中使用
+### Claude Desktop 配置
 
-```python
-from agent_skills.sandbox import Sandbox, SandboxConfig
-from agent_skills.core import Executor, SkillManager
+编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
-# 创建沙箱
-config = SandboxConfig(workspace_root="/path/to/workspace")
-sandbox = Sandbox(config)
-
-# 使用 Executor 执行命令
-executor = Executor(sandbox)
-result = await executor.bash("ls -la")
-print(result.stdout)
-
-# 使用 SkillManager 发现技能
-skill_manager = SkillManager(sandbox)
-skills = skill_manager.discover_skills()
-for skill in skills:
-    print(f"{skill.name}: {skill.description}")
+```json
+{
+  "mcpServers": {
+    "agent-skills": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-v", "/Users/nanjiayan:/Users/nanjiayan",
+               "-v", "~/.agent-skills/skills:/skills:ro",
+               "agent-skills:latest"]
+    }
+  }
+}
 ```
 
-## MCP 工具列表
+### 本地开发
 
-Agent Skills 提供 **5 个精简工具**：
+```bash
+# 安装依赖
+uv sync
 
-### bash - 主要工具
-
-执行任意 shell 命令，这是最核心的工具。
-
-```python
-# 文件操作
-bash("ls -la")                          # 列出文件
-bash("cat main.py")                     # 读取文件
-bash("head -n 20 main.py")              # 读取前 20 行
-bash("grep -rn 'TODO' src/")            # 搜索内容
-bash("find . -name '*.py'")             # 查找文件
-
-# 文件编辑
-bash("echo 'content' > file.txt")       # 写入文件
-bash("echo 'more' >> file.txt")         # 追加内容
-bash("sed -i '' 's/old/new/g' file.txt")  # 替换 (macOS)
-bash("sed -i 's/old/new/g' file.txt")     # 替换 (Linux)
-
-# 目录操作
-bash("mkdir -p path/to/dir")            # 创建目录
-bash("rm -rf dir/")                     # 删除目录
-bash("cp -r src/ dst/")                 # 复制
-bash("mv old.txt new.txt")              # 移动/重命名
-
-# 执行脚本
-bash("python script.py", timeout=60)    # 运行 Python
-bash("npm install", cwd="frontend")     # 指定工作目录
+# 启动 MCP Server
+uv run agent-skills-server
 ```
 
-### bg - 后台执行
+## MCP 工具列表（6 个）
+
+所有工具都以 `skills_` 前缀开头，功能原子化：
+
+### skills_bash - 执行命令
 
 ```python
-bg("python server.py")                  # 启动后台进程
-bg("npm run dev", cwd="frontend")       # 启动开发服务器
+skills_bash(command="ls -la")
+skills_bash(command="grep -r 'pattern' .", timeout=30)
+skills_bash(command="mkdir -p output/data")
 ```
 
-### jobs - 查看后台任务
+### skills_ls - 列出文件
 
 ```python
-jobs()                                  # 列出所有后台任务
+skills_ls()                           # 列出 workspace
+skills_ls(path="skills")              # 列出所有 skills
+skills_ls(path="skills/gcd-calculator")  # 列出 skill 内文件
 ```
 
-### kill - 终止进程
+### skills_read - 读取文件
 
 ```python
-kill(12345)                             # 发送 SIGTERM
-kill(12345, signal=9)                   # 发送 SIGKILL (强制终止)
+skills_read(path="skills/gcd-calculator/SKILL.md")  # 读取 skill 说明
+skills_read(path="skills/gcd-calculator/scripts/gcd.py")  # 读取脚本
+skills_read(path="/Users/me/output.txt")  # 直接读取宿主机文件
 ```
 
-### skill - 技能管理
+### skills_write - 写入文件
 
 ```python
-skill("list")                           # 列出所有技能（name + description）
-skill("list", verbose=True)             # 详细列表（含 URI 和 Path）
-skill("create", name="my-skill",        # 创建新技能
-      description="Does X",
-      instructions="# Instructions...")
-skill("validate", path="./my-skill")    # 验证技能格式
+skills_write(path="/Users/me/output.txt", content="Hello World")
+skills_write(path="skills/my-skill/scripts/run.py", content="print('hi')")
+```
+
+### skills_create - 创建 Skill
+
+```python
+skills_create(
+    name="my-tool",
+    description="Does something useful",
+    instructions="# My Tool\n\n## Usage\n..."
+)
+```
+
+### skills_run - 运行 Skill 脚本
+
+```python
+skills_run(name="gcd-calculator", command="python scripts/gcd.py 12 18")
+skills_run(name="my-tool", command="bash scripts/setup.sh", timeout=120)
+# 直接处理宿主机文件
+skills_run(name="pdf-tools", command="python scripts/extract.py /Users/me/doc.pdf")
+```
+
+## 文件访问工作流
+
+无需上传下载，Agent 直接使用宿主机绝对路径：
+
+```
+1. 用户请求: "帮我处理 /Users/me/doc.pdf"
+2. skills_read("skills/pdf-tools/SKILL.md") → 学习处理方法
+3. skills_run("pdf-tools", "python scripts/process.py /Users/me/doc.pdf")
+4. 结果直接生成在宿主机 (如 /Users/me/doc_processed.txt)
+5. Agent 读取结果返回给用户
 ```
 
 ## MCP Resources - 技能自动暴露
 
-Skills 作为 MCP Resource **自动暴露**给 Agent，实现真正的渐进式披露：
-
-1. **启动时自动暴露**: 所有 skill 的 name 和 description 在 `list_resources()` 中可见
-2. **按需读取内容**: `read_resource("skill://skill-name")` 读取完整 SKILL.md
+Skills 作为 MCP Resource **自动暴露**给 Agent：
 
 ```
-Agent 连接 MCP Server 时自动获取:
-┌─────────────────────────────────────────────────────────────────┐
-│  list_resources() 返回:                                         │
-│                                                                  │
-│  skill://skill-creator                                          │
-│    name: skill-creator                                          │
-│    description: 用于创建新技能的元技能，扩展 Agent 的能力边界      │
-│                                                                  │
-│  skill://code-reviewer                                          │
-│    name: code-reviewer                                          │
-│    description: 代码审查和质量分析                               │
-└─────────────────────────────────────────────────────────────────┘
+启动时自动获取:
+┌─────────────────────────────────────────────────────────────┐
+│  list_resources() 返回:                                     │
+│                                                             │
+│  skill://skill-creator                                      │
+│    description: 用于创建新技能的元技能                       │
+│                                                             │
+│  skill://gcd-calculator                                     │
+│    description: 计算最大公约数                               │
+│  ...                                                        │
+└─────────────────────────────────────────────────────────────┘
                               ↓ Agent 判断需要时
-┌─────────────────────────────────────────────────────────────────┐
-│  read_resource("skill://skill-creator")                         │
-│  → 返回完整 SKILL.md 内容（~2000 字符）                          │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  read_resource("skill://skill-creator")                     │
+│  → 返回完整 SKILL.md 内容                                   │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-**无需调用 `skill("list")`**，Agent 启动时就能看到所有可用技能！
-
-这种设计的好处：
-- Agent 启动时自动感知所有可用能力
-- 减少 token 消耗（只预加载 name/description）
-- Agent 按需获取详细指令
-- 符合 Claude Skills 官方设计理念
 
 ## Skill 格式
 
@@ -180,89 +167,63 @@ description: What this skill does and when to use it
 [Concrete examples]
 ```
 
-## 安全机制
+## Docker 环境
 
-### 路径限制
-- 所有文件操作限制在 workspace 目录内
-- 自动阻止路径遍历攻击 (`../`)
-- 支持自定义黑名单
+预装的工具和库：
 
-### 命令安全
-- 内置危险命令黑名单：
-  - 破坏性命令: `rm -rf /`, `mkfs`, `dd if=/dev/zero`
-  - 权限提升: `sudo`, `su`, `doas`
-  - 系统控制: `shutdown`, `reboot`
-  - Fork bomb 等
-- 可配置超时限制
-- 可选的网络访问控制
+**系统工具：**
+- git, curl, jq
+- poppler-utils, qpdf (PDF)
+- imagemagick (图像)
+- ripgrep (搜索)
+- Node.js 22.x
 
-### 默认文件黑名单
-- `.git` - Git 目录
-- `.env`, `.env.*` - 环境变量文件
-- `*.pem`, `*.key` - 密钥文件
-- `*_secret*`, `*password*` - 敏感文件
+**Python 库：**
+- pypdf, pdfplumber (PDF)
+- pandas (数据处理)
+- pillow (图像)
+- requests, httpx (HTTP)
+- pyyaml
 
-## 配置选项
+## 环境变量
 
-```python
-from agent_skills.sandbox import SandboxConfig
-
-config = SandboxConfig(
-    # 工作目录
-    workspace_root="/path/to/workspace",
-    
-    # 文件黑名单模式
-    blacklist=[".git", ".env", "*.key"],
-    
-    # 命令黑名单
-    command_blacklist=["rm -rf /", "sudo"],
-    
-    # 是否允许写操作
-    allow_write=True,
-    
-    # 是否允许网络访问
-    allow_network=False,
-    
-    # 最大文件大小 (bytes)
-    max_file_size=10 * 1024 * 1024,  # 10 MB
-)
-```
-
-## 内部 API
-
-除了 MCP 工具，还可以直接使用内部模块：
-
-```python
-from agent_skills.core import FileSystem, Editor, Executor, SkillManager
-
-# FileSystem - 文件操作
-fs = FileSystem(sandbox)
-fs.cat("main.py")
-fs.ls("src", long=True)
-fs.grep("TODO", "src", recursive=True)
-
-# Editor - 文件编辑
-editor = Editor(sandbox)
-editor.sed("file.py", "old", "new", global_replace=True)
-editor.write("new.txt", "content")
-editor.append("log.txt", "new line\n")
-
-# SkillManager - 技能发现
-skill_manager = SkillManager(sandbox)
-skills = skill_manager.discover_skills()  # 获取所有技能元数据
-skill = skill_manager.find_skill("skill-creator")  # 查找特定技能
-content = skill_manager.read_skill_content("skill-creator")  # 读取完整内容
-```
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SKILLS_WORKSPACE` | `/workspace` | 工作目录 |
+| `SKILLS_DIR` | `/skills` | Skills 目录（volume 挂载） |
 
 ## 开发
 
 ```bash
-# 运行测试
-cd agent_skills
-pytest tests/ -v
+# 安装依赖
+uv sync
 
-# 运行特定测试
-pytest tests/test_executor.py -v
+# 运行测试
+uv run pytest tests/ -v
+
+# 构建 Docker 镜像
+docker build -t agent-skills:latest -f docker/Dockerfile .
+```
+
+## 项目结构
+
+```
+agent_skills/
+├── agent_skills/
+│   ├── core/
+│   │   ├── skill_manager.py  # Skill 发现和管理
+│   │   └── types.py          # 类型定义
+│   ├── mcp/
+│   │   ├── server.py         # MCP Server 入口
+│   │   ├── tools.py          # 6 个 skills_* 工具
+│   │   └── prompts.py        # Skill Guide Prompt
+│   └── skills/               # 内置 skills
+├── docker/
+│   ├── Dockerfile
+│   └── .dockerignore
+├── tests/
+├── pyproject.toml
+└── README.md
 ```
 
 ## License

@@ -2,8 +2,8 @@
 
 This script demonstrates how to use the agent-skills MCP server
 with LangChain to create an interactive AI agent that can:
-- Execute shell commands (bash)
-- Manage background tasks (bg, jobs, kill)
+- Execute shell commands (skills_bash)
+- Read/write files (skills_read, skills_write)
 - Discover and use skills via MCP Resources
 
 Usage:
@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -40,24 +41,21 @@ from rich.text import Text
 from rich.theme import Theme
 
 # Import local modules for system prompt construction
-# Add the directory containing agent_skills package to sys.path
-agent_skills_pkg_path = os.path.join(os.path.dirname(__file__), "..", "agent_skills")
-sys.path.append(agent_skills_pkg_path)
+# Add project root to sys.path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 try:
     from agent_skills.core.skill_manager import SkillManager
     from agent_skills.mcp.prompts import SKILL_GUIDE_PROMPT
-    from agent_skills.sandbox.sandbox import Sandbox, SandboxConfig
 except ImportError:
     # Fallback if import fails (e.g. structure differences)
     print("Warning: Could not import local agent_skills modules. System prompt will be limited.")
     # Use dummy values
-    skill_guide_prompt_content = ""
-    SkillManager = None
-    Sandbox = None
-    SandboxConfig = None
+    SKILL_GUIDE_PROMPT = ""
+    SkillManager = None  # type: ignore
 else:
-    skill_guide_prompt_content = SKILL_GUIDE_PROMPT
+    pass  # Imports successful
 
 # Suppress internal logging
 logging.getLogger("mcp").setLevel(logging.WARNING)
@@ -89,19 +87,21 @@ command execution, and skill management.
 ## Available Tools
 
 You have access to the following tools via MCP:
-- `bash`: Execute shell commands (ls, cat, grep, python, etc.)
-- `bg`: Run commands in background
-- `jobs`: List background tasks
-- `kill`: Terminate processes
-- `skill`: Manage skills (list, read, create, validate)
+- `skills_bash`: Execute shell commands (ls, cat, grep, python, etc.)
+- `skills_ls`: List files and directories
+- `skills_read`: Read file contents
+- `skills_write`: Write/modify files
+- `skills_create`: Create new skills
+- `skills_run`: Run skill scripts
 
 ## Guidelines
 
-1. Use `bash` as your primary tool for file operations
-2. When you need to learn how to do something, check if there's a relevant skill
-3. Be concise and helpful in your responses
-4. Always explain what you're doing before executing commands
-5. When exploring a directory, start with `bash("ls -la")` to see what files exist
+1. Use `skills_bash` for general command execution
+2. Use `skills_ls(path="skills")` to discover available skills
+3. Use `skills_read(path="skills/<name>/SKILL.md")` to learn how to use a skill
+4. Be concise and helpful in your responses
+5. Always explain what you're doing before executing commands
+6. You have direct access to the filesystem. Use absolute paths to read/write files directly.
 """
 
 
@@ -188,8 +188,8 @@ def print_welcome() -> None:
 ╔══════════════════════════════════════════════════════════════╗
 ║          🤖 Agent Skills Interactive Demo                    ║
 ║                                                              ║
-║  This agent can execute shell commands, manage background    ║
-║  tasks, and use skills from the MCP server.                  ║
+║  This agent can execute shell commands, manage files,        ║
+║  and use skills from the MCP server.                         ║
 ║                                                              ║
 ║  Commands: 'exit' or 'quit' to stop                          ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -222,13 +222,8 @@ async def main() -> None:
         console.print("Please set it in your .env file or environment.")
         sys.exit(1)
 
-    # Get workspace path (default to current directory)
-    workspace = os.getcwd()
-    console.print(f"📁 Workspace: [info]{workspace}[/info]")
-    console.print()
-
     # Get project root directory (contains pyproject.toml)
-    project_root = os.path.join(os.path.dirname(__file__), "..")
+    project_root_dir = str(Path(__file__).parent.parent)
 
     # Create MCP client configuration using StdioConnection TypedDict
     mcp_connections: dict[str, StdioConnection] = {
@@ -238,16 +233,15 @@ async def main() -> None:
             args=[
                 "run",
                 "--directory",
-                project_root,
+                project_root_dir,
                 "agent-skills-server",
-                "--workspace",
-                workspace,
                 "--quiet",  # Suppress MCP server logs
             ],
             env={
                 **os.environ,
                 "MCP_LOG_LEVEL": "ERROR",
                 "LOGURU_LEVEL": "ERROR",
+                "SKILLS_WORKSPACE": os.path.join(os.getcwd(), "workspace_demo"),
             },
         )
     }
@@ -265,28 +259,29 @@ async def main() -> None:
         
         # Build enhanced system prompt with Skill Guide and Skill List
         skills_text = ""
-        if SkillManager and Sandbox and SandboxConfig:
-            # 1. Initialize local SkillManager to get skills list
-            # Note: We use the same logic as the server to discover skills
-            sandbox_config = SandboxConfig(workspace_root=workspace)
-            sandbox = Sandbox(config=sandbox_config)
-            skill_manager = SkillManager(sandbox)
+        num_skills = 0
+        
+        if SkillManager is not None:
+            # Initialize local SkillManager to get skills list
+            builtin_skills_dir = Path(__file__).parent.parent / "agent_skills" / "skills"
+            skill_manager = SkillManager(
+                skills_dirs=[builtin_skills_dir] if builtin_skills_dir.exists() else None,
+                builtin_skills_dir=builtin_skills_dir,
+            )
             skills = skill_manager.discover_skills()
             
-            # 2. Format skills list
+            # Format skills list
             skills_text = "\n".join([f"- {skill.name}: {skill.description}" for skill in skills])
-            
             num_skills = len(skills)
         else:
             skills_text = "(Skill discovery unavailable in client)"
-            num_skills = 0
         
-        # 3. Construct final system prompt
+        # Construct final system prompt
         system_prompt = f"""{BASE_SYSTEM_PROMPT}
 
 # Skill System Guide
 
-{skill_guide_prompt_content}
+{SKILL_GUIDE_PROMPT}
 
 # Available Skills (Preloaded)
 
@@ -294,7 +289,7 @@ The following skills are currently available in your environment:
 
 {skills_text}
 
-You can read the full content of any skill using `skill("read", name="skill-name")`.
+You can read the full content of any skill using `skills_read(path="skills/<skill-name>/SKILL.md")`.
 """
         
         console.print(Panel(
@@ -305,7 +300,7 @@ You can read the full content of any skill using `skill("read", name="skill-name
 
         # Create the LLM
         llm = ChatOpenAI(
-            model="gpt-5.1",
+            model="gpt-4.1",
             temperature=0.3,
             max_retries=3,       # 自动重试 3 次
             timeout=180,

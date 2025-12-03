@@ -1,6 +1,7 @@
 """MCP Server for agent skills.
 
 This module provides the main entry point for the MCP server.
+Designed to run in a Docker container with pre-configured environment.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from agent_skills.mcp.tools import register_tools
-from agent_skills.sandbox.sandbox import SandboxConfig
 
 
 def get_default_skills_dir() -> Path:
@@ -26,25 +26,23 @@ def get_default_skills_dir() -> Path:
 
 
 def create_server(
-    workspace_root: str | None = None,
     skills_dirs: list[str] | None = None,
-    allow_write: bool = True,
-    allow_network: bool = False,
-    sandbox_to_skills: bool = True,
 ) -> FastMCP:
     """
     Create and configure an MCP server with agent-skills tools.
 
+    The server provides 8 tools:
+    - skills_run: Run skill scripts
+    - skills_ls: List files/directories
+    - skills_read: Read file content
+    - skills_write: Write/modify files
+    - skills_create: Create new skills
+    - skills_upload: Upload files (Base64)
+    - skills_download: Download files (Base64)
+    - skills_bash: Execute shell commands
+
     Args:
-        workspace_root: Root directory for file operations.
-                       If sandbox_to_skills=True (default), this is ignored and
-                       the built-in skills directory is used.
         skills_dirs: Additional directories to search for skills
-        allow_write: Whether to allow write operations
-        allow_network: Whether to allow network access in commands
-        sandbox_to_skills: If True (default), sandbox the agent to the skills
-                          directory only. Agent cannot access anything outside.
-                          If False, use workspace_root as the sandbox root.
 
     Returns:
         Configured FastMCP server instance
@@ -54,26 +52,8 @@ def create_server(
         name="agent-skills",
     )
 
-    # Determine the sandbox root
-    if sandbox_to_skills:
-        # Sandbox to the built-in skills directory
-        # Agent can only see and operate on skills
-        sandbox_root = str(get_default_skills_dir())
-    else:
-        # Use provided workspace_root or cwd
-        sandbox_root = workspace_root or os.getcwd()
-
-    # Configure sandbox
-    sandbox_config = SandboxConfig(
-        workspace_root=sandbox_root,
-        allow_write=allow_write,
-        allow_network=allow_network,
-    )
-
     # Register all tools
-    # Note: skills_dirs is still used to discover additional skills,
-    # but the sandbox root determines where commands execute
-    register_tools(mcp, sandbox_config, skills_dirs)
+    register_tools(mcp, skills_dirs)
 
     return mcp
 
@@ -85,25 +65,24 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Start server (agent is sandboxed to skills directory by default)
+  # Start server (default mode)
   agent-skills-server
-
-  # Start with custom workspace (disables skills sandbox)
-  agent-skills-server --workspace /path/to/project --no-skills-sandbox
 
   # Start with additional skills directory
   agent-skills-server --skills-dir /path/to/skills
 
-  # Read-only mode
-  agent-skills-server --read-only
-        """,
-    )
+  # Start with SSE transport
+  agent-skills-server --transport sse
 
-    parser.add_argument(
-        "--workspace", "-w",
-        type=str,
-        default=None,
-        help="Workspace root directory (only used with --no-skills-sandbox)",
+Environment Variables:
+  SKILLS_WORKSPACE: Workspace directory (default: /workspace)
+  SKILLS_DIR: Skills directory (default: /skills)
+
+Docker Usage:
+  docker run -i --rm \\
+    -v ~/.agent-skills/skills:/skills:ro \\
+    agent-skills:latest
+        """,
     )
 
     parser.add_argument(
@@ -112,24 +91,6 @@ Examples:
         action="append",
         default=[],
         help="Additional skills directory (can be specified multiple times)",
-    )
-
-    parser.add_argument(
-        "--no-skills-sandbox",
-        action="store_true",
-        help="Disable skills sandbox (allow agent to access workspace_root instead)",
-    )
-
-    parser.add_argument(
-        "--read-only", "-r",
-        action="store_true",
-        help="Disable write operations",
-    )
-
-    parser.add_argument(
-        "--allow-network", "-n",
-        action="store_true",
-        help="Allow network access in bash commands",
     )
 
     parser.add_argument(
@@ -151,18 +112,13 @@ Examples:
     # Suppress logging if --quiet is set
     if args.quiet:
         logging.disable(logging.CRITICAL)
-        # Also suppress rich console handler used by fastmcp
         logging.getLogger().handlers = []
         logging.getLogger("mcp").setLevel(logging.CRITICAL)
         logging.getLogger("uvicorn").setLevel(logging.CRITICAL)
 
     # Create server
     mcp = create_server(
-        workspace_root=args.workspace,
         skills_dirs=args.skills_dir if args.skills_dir else None,
-        allow_write=not args.read_only,
-        allow_network=args.allow_network,
-        sandbox_to_skills=not args.no_skills_sandbox,
     )
 
     # Run server
@@ -174,4 +130,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

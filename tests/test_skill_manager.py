@@ -9,88 +9,8 @@ from agent_skills.core.skill_manager import SKILL_FILE_NAME, SkillManager
 from agent_skills.core.types import ToolStatus
 
 
-class TestSkillList:
-    """Tests for skill list command."""
-
-    def test_list_empty(self, skill_manager: SkillManager) -> None:
-        """Test listing when no skills available."""
-        result = skill_manager.list()
-        assert result.status == ToolStatus.SUCCESS
-
-    def test_list_with_skills(
-        self, skill_manager: SkillManager, temp_workspace: Path
-    ) -> None:
-        """Test listing available skills."""
-        # Create a skill
-        skills_dir = temp_workspace / "skills" / "test-skill"
-        skills_dir.mkdir(parents=True)
-        skill_file = skills_dir / SKILL_FILE_NAME
-        skill_file.write_text(
-            """---
-name: test-skill
-description: A test skill
----
-
-# Test Skill
-
-Instructions here.
-"""
-        )
-
-        result = skill_manager.list()
-        assert result.status == ToolStatus.SUCCESS
-        assert "test-skill" in result.data
-
-
-class TestSkillCreate:
-    """Tests for skill create command."""
-
-    def test_create_skill(
-        self, skill_manager: SkillManager, temp_workspace: Path
-    ) -> None:
-        """Test creating a new skill."""
-        result = skill_manager.create(
-            name="my-skill",
-            description="Does something useful",
-            instructions="# My Skill\n\nInstructions here.",
-            path=str(temp_workspace / "skills"),
-        )
-
-        assert result.status == ToolStatus.SUCCESS
-        assert "my-skill" in result.message
-
-        # Verify the skill was created
-        skill_dir = temp_workspace / "skills" / "my-skill"
-        assert skill_dir.exists()
-        assert (skill_dir / SKILL_FILE_NAME).exists()
-
-    def test_create_invalid_name(self, skill_manager: SkillManager) -> None:
-        """Test creating a skill with invalid name."""
-        result = skill_manager.create(
-            name="Invalid Name",
-            description="Test",
-            instructions="Test",
-        )
-        assert result.status == ToolStatus.ERROR
-        assert "invalid name" in result.message.lower()
-
-    def test_create_duplicate(
-        self, skill_manager: SkillManager, temp_workspace: Path
-    ) -> None:
-        """Test creating a duplicate skill."""
-        path = str(temp_workspace / "skills")
-
-        # Create first skill
-        skill_manager.create("my-skill", "Test", "Test", path)
-
-        # Try to create duplicate
-        result = skill_manager.create("my-skill", "Test 2", "Test 2", path)
-        assert result.status == ToolStatus.ERROR
-        assert "already exists" in result.message
-
-
 class TestSkillDiscover:
-    """Tests for skill discovery (new API replacing load/unload)."""
+    """Tests for skill discovery."""
 
     def test_discover_skills(
         self, skill_manager: SkillManager, temp_workspace: Path
@@ -153,8 +73,55 @@ description: A skill that can be found
         assert skill is None
 
 
+class TestSkillCreate:
+    """Tests for skill create command."""
+
+    def test_create_skill(
+        self, skill_manager: SkillManager, temp_workspace: Path
+    ) -> None:
+        """Test creating a new skill."""
+        result = skill_manager.create(
+            name="my-skill",
+            description="Does something useful",
+            instructions="# My Skill\n\nInstructions here.",
+            target_dir=temp_workspace / "skills",
+        )
+
+        assert result.status == ToolStatus.SUCCESS
+        assert "my-skill" in result.message
+
+        # Verify the skill was created
+        skill_dir = temp_workspace / "skills" / "my-skill"
+        assert skill_dir.exists()
+        assert (skill_dir / SKILL_FILE_NAME).exists()
+
+    def test_create_invalid_name(self, skill_manager: SkillManager) -> None:
+        """Test creating a skill with invalid name."""
+        result = skill_manager.create(
+            name="Invalid Name",
+            description="Test",
+            instructions="Test",
+        )
+        assert result.status == ToolStatus.ERROR
+        assert "invalid name" in result.message.lower()
+
+    def test_create_duplicate(
+        self, skill_manager: SkillManager, temp_workspace: Path
+    ) -> None:
+        """Test creating a duplicate skill."""
+        target_dir = temp_workspace / "skills"
+
+        # Create first skill
+        skill_manager.create("my-skill", "Test", "Test", target_dir)
+
+        # Try to create duplicate
+        result = skill_manager.create("my-skill", "Test 2", "Test 2", target_dir)
+        assert result.status == ToolStatus.ERROR
+        assert "already exists" in result.message
+
+
 class TestSkillReadContent:
-    """Tests for reading skill content (new API)."""
+    """Tests for reading skill content."""
 
     def test_read_skill_content(
         self, skill_manager: SkillManager, temp_workspace: Path
@@ -257,4 +224,49 @@ name: no-desc
         )
 
         result = skill_manager.validate(str(skill_dir))
+        assert result.status == ToolStatus.ERROR
+
+
+class TestSkillAddFile:
+    """Tests for adding files to skills."""
+
+    def test_add_file_to_skill(
+        self, skill_manager: SkillManager, temp_workspace: Path
+    ) -> None:
+        """Test adding a file to a skill."""
+        # Create a skill first
+        skills_dir = temp_workspace / "skills" / "file-skill"
+        skills_dir.mkdir(parents=True)
+        skill_file = skills_dir / SKILL_FILE_NAME
+        skill_file.write_text(
+            """---
+name: file-skill
+description: A skill for file testing
+---
+
+# File Skill
+"""
+        )
+
+        # Add a file
+        result = skill_manager.add_file(
+            name="file-skill",
+            file_path="scripts/run.py",
+            content="print('hello')",
+        )
+
+        assert result.status == ToolStatus.SUCCESS
+        
+        # Verify file was created
+        script_file = skills_dir / "scripts" / "run.py"
+        assert script_file.exists()
+        assert script_file.read_text() == "print('hello')"
+
+    def test_add_file_to_nonexistent_skill(self, skill_manager: SkillManager) -> None:
+        """Test adding a file to a nonexistent skill."""
+        result = skill_manager.add_file(
+            name="nonexistent",
+            file_path="test.txt",
+            content="test",
+        )
         assert result.status == ToolStatus.ERROR

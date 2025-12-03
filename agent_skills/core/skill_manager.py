@@ -1,20 +1,18 @@
 """Skill Manager module for managing AI agent skills.
 
-Provides: skill list/create/validate and skill discovery for MCP Resources.
+Provides: skill discovery, creation, and validation for MCP Resources.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import yaml
 
 from agent_skills.core.types import SkillInfo, ToolResult, ToolStatus
-
-if TYPE_CHECKING:
-    from agent_skills.sandbox.sandbox import Sandbox
 
 
 # Skill file name constants
@@ -45,101 +43,147 @@ class SkillManager:
 
     def __init__(
         self,
-        sandbox: Sandbox,
-        skills_dirs: list[str] | None = None,
+        skills_dirs: list[Path] | None = None,
+        builtin_skills_dir: Path | None = None,
     ) -> None:
         """
         Initialize SkillManager.
 
         Args:
-            sandbox: Security sandbox for path validation
             skills_dirs: List of directories to search for skills
-                        (in addition to the default built-in skills)
+            builtin_skills_dir: Built-in skills directory (default: agent_skills/skills/)
         """
-        self.sandbox = sandbox
-
         # Default skills directories
         self._skills_dirs: list[Path] = []
 
         # Add built-in skills directory (default location for new skills)
-        self._builtin_skills_dir = Path(__file__).parent.parent / "skills"
+        self._builtin_skills_dir = builtin_skills_dir or (Path(__file__).parent.parent / "skills")
         if self._builtin_skills_dir.exists():
             self._skills_dirs.append(self._builtin_skills_dir)
-
-        # Add workspace .skills directory (where create() saves new skills by default)
-        # Always add it, even if it doesn't exist yet - it will be created by create()
-        self._workspace_skills_dir = Path(sandbox.workspace_root) / ".skills"
-        self._skills_dirs.append(self._workspace_skills_dir)
 
         # Add user-provided directories
         if skills_dirs:
             for dir_path in skills_dirs:
-                try:
-                    resolved = self.sandbox.resolve_path(dir_path)
-                    if resolved.exists() and resolved.is_dir():
-                        self._skills_dirs.append(resolved)
-                except PermissionError:
-                    pass
+                if dir_path.exists() and dir_path.is_dir():
+                    self._skills_dirs.append(dir_path)
 
-    def list(self, verbose: bool = False) -> ToolResult:
+    def discover_skills(self) -> list[SkillInfo]:
         """
-        List all available skills.
+        Discover all available skills in skills directories.
 
-        Args:
-            verbose: Show detailed information including descriptions
+        This is the public API for getting skill metadata,
+        used by MCP Resource registration.
 
         Returns:
-            ToolResult with skill listing
+            List of SkillInfo with name, description, and path
         """
-        skills = self.discover_skills()
+        skills: list[SkillInfo] = []
+        seen_names: set[str] = set()
 
-        if not skills:
-            return ToolResult.success(
-                message="No skills found",
-                data=[],
-            )
+        for skills_dir in self._skills_dirs:
+            if not skills_dir.exists():
+                continue
 
-        lines: list[str] = []
-        if verbose:
-            for skill in skills:
-                lines.append(f"• {skill.name}: {skill.description}")
-                lines.append(f"  URI: skill://{skill.name}")
-                lines.append(f"  Path: {skill.path}")
-            output = "\n".join(lines)
-        else:
-            for skill in skills:
-                lines.append(f"  {skill.name}: {skill.description}")
-            output = "\n".join(lines)
+            for item in skills_dir.iterdir():
+                if not item.is_dir():
+                    continue
 
-        return ToolResult.success(
-            message=f"Found {len(skills)} skill(s). Use read_resource('skill://name') to read content.",
-            data=output,
-        )
+                skill_file = item / SKILL_FILE_NAME
+                if not skill_file.exists():
+                    continue
+
+                try:
+                    content = skill_file.read_text(encoding="utf-8")
+                    parsed = self._parse_skill_file(content)
+
+                    if parsed:
+                        frontmatter, _ = parsed
+                        name = str(frontmatter.get("name", item.name))
+
+                        if name not in seen_names:
+                            seen_names.add(name)
+                            skills.append(
+                                SkillInfo(
+                                    name=name,
+                                    description=str(frontmatter.get("description", "")),
+                                    path=str(item),
+                                )
+                            )
+                except Exception:
+                    continue
+
+        return sorted(skills, key=lambda s: s.name)
+
+    def find_skill(self, name: str) -> SkillInfo | None:
+        """
+        Find a skill by name.
+
+        Args:
+            name: Name of the skill to find
+
+        Returns:
+            SkillInfo if found, None otherwise
+        """
+        for skill in self.discover_skills():
+            if skill.name == name:
+                return skill
+        return None
+
+    def read_skill_content(self, name: str) -> str | None:
+        """
+        Read the full content of a skill's SKILL.md file.
+
+        Args:
+            name: Name of the skill to read
+
+        Returns:
+            Full SKILL.md content or None if not found
+        """
+        skill = self.find_skill(name)
+        if skill is None:
+            return None
+
+        skill_file = Path(skill.path) / SKILL_FILE_NAME
+        if not skill_file.exists():
+            return None
+
+        return skill_file.read_text(encoding="utf-8")
+
+    def get_skill_path(self, name: str) -> Path | None:
+        """
+        Get the absolute directory path of a skill.
+
+        Args:
+            name: Name of the skill
+
+        Returns:
+            Path object to the skill directory or None if not found
+        """
+        skill = self.find_skill(name)
+        if skill is None:
+            return None
+        return Path(skill.path)
 
     def create(
         self,
         name: str,
         description: str,
         instructions: str,
-        path: str | None = None,
+        target_dir: Path | None = None,
     ) -> ToolResult:
         """
         Create a new skill.
-
-        This is the meta-skill: the ability to create new skills.
 
         Args:
             name: Unique skill name (lowercase, hyphens for spaces)
             description: Clear description of what the skill does
             instructions: Markdown content with instructions for the agent
-            path: Directory to create the skill in (defaults to first user skills dir)
+            target_dir: Directory to create the skill in (defaults to builtin skills dir)
 
         Returns:
             ToolResult with the created skill info
         """
         try:
-            self.sandbox.check_write_allowed()
-
             # Validate skill name
             if not re.match(r"^[a-z][a-z0-9-]*$", name):
                 return ToolResult.error(
@@ -148,13 +192,7 @@ class SkillManager:
                 )
 
             # Determine where to create the skill
-            if path:
-                # User specified a custom path
-                skill_dir = self.sandbox.resolve_path(path) / name
-            else:
-                # Default: use the built-in skills directory (first in list)
-                # This is agent_skills/agent_skills/skills/
-                skill_dir = self._builtin_skills_dir / name
+            skill_dir = (target_dir or self._builtin_skills_dir) / name
 
             # Check if skill already exists
             if skill_dir.exists():
@@ -187,8 +225,6 @@ class SkillManager:
                 },
             )
 
-        except PermissionError as e:
-            return ToolResult.error(f"skill create: {e}")
         except Exception as e:
             return ToolResult.error(f"skill create: {e}")
 
@@ -203,7 +239,7 @@ class SkillManager:
             ToolResult with validation results
         """
         try:
-            resolved = self.sandbox.resolve_path(path)
+            resolved = Path(path).resolve()
 
             # Determine skill file path
             if resolved.is_dir():
@@ -281,110 +317,8 @@ class SkillManager:
                     data="\n".join(result_lines),
                 )
 
-        except PermissionError as e:
-            return ToolResult.error(f"skill validate: {e}")
         except Exception as e:
             return ToolResult.error(f"skill validate: {e}")
-
-    def discover_skills(self) -> list[SkillInfo]:
-        """
-        Discover all available skills in skills directories.
-
-        This is the public API for getting skill metadata,
-        used by MCP Resource registration.
-
-        Returns:
-            List of SkillInfo with name, description, and path
-        """
-        skills: list[SkillInfo] = []
-        seen_names: set[str] = set()
-
-        for skills_dir in self._skills_dirs:
-            if not skills_dir.exists():
-                continue
-
-            for item in skills_dir.iterdir():
-                if not item.is_dir():
-                    continue
-
-                skill_file = item / SKILL_FILE_NAME
-                if not skill_file.exists():
-                    continue
-
-                try:
-                    content = skill_file.read_text(encoding="utf-8")
-                    parsed = self._parse_skill_file(content)
-
-                    if parsed:
-                        frontmatter, _ = parsed
-                        name = str(frontmatter.get("name", item.name))
-
-                        if name not in seen_names:
-                            seen_names.add(name)
-                            skills.append(
-                                SkillInfo(
-                                    name=name,
-                                    description=str(frontmatter.get("description", "")),
-                                    path=str(item),
-                                )
-                            )
-                except Exception:
-                    continue
-
-        return sorted(skills, key=lambda s: s.name)
-
-    def find_skill(self, name: str) -> SkillInfo | None:
-        """
-        Find a skill by name.
-
-        This is the public API for finding a specific skill,
-        used by MCP Resource reading.
-
-        Args:
-            name: Name of the skill to find
-
-        Returns:
-            SkillInfo if found, None otherwise
-        """
-        for skill in self.discover_skills():
-            if skill.name == name:
-                return skill
-        return None
-
-    def read_skill_content(self, name: str) -> str | None:
-        """
-        Read the full content of a skill's SKILL.md file.
-
-        Args:
-            name: Name of the skill to read
-
-        Returns:
-            Full SKILL.md content or None if not found
-        """
-        skill = self.find_skill(name)
-        if skill is None:
-            return None
-
-        skill_file = Path(skill.path) / SKILL_FILE_NAME
-        if not skill_file.exists():
-            return None
-
-        return skill_file.read_text(encoding="utf-8")
-
-    def get_skill_path(self, name: str) -> Path | None:
-        """
-        Get the absolute directory path of a skill.
-
-        Args:
-            name: Name of the skill
-
-        Returns:
-            Path object to the skill directory or None if not found
-        """
-        skill = self.find_skill(name)
-        if skill is None:
-            return None
-        return Path(skill.path)
 
     def add_file(self, name: str, file_path: str, content: str) -> ToolResult:
         """
@@ -416,8 +350,6 @@ class SkillManager:
                     f"skill add_file: path '{file_path}' attempts to access outside skill directory"
                 )
 
-            self.sandbox.check_write_allowed()
-            
             # Ensure parent directory exists
             target_file.parent.mkdir(parents=True, exist_ok=True)
             
@@ -441,8 +373,6 @@ class SkillManager:
                 message += " (auto-created scripts/pyproject.toml for uv environment)"
             
             return ToolResult.success(message=message, data=result_data)
-        except PermissionError as e:
-            return ToolResult.error(f"skill add_file: {e}")
         except Exception as e:
             return ToolResult.error(f"skill add_file: {e}")
     

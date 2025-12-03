@@ -23,7 +23,7 @@ SKILL_GUIDE_PROMPT = """# 技能系统 (Skills System)
 3. **任务有固定流程**：如果某类任务有标准化的处理步骤
 4. **需要执行脚本**：任务需要运行 Python/Bash 脚本来完成
 
-**最佳实践**：在开始复杂任务前，先用 `skills_list()` 查看可用技能。
+**最佳实践**：在开始复杂任务前，先用 `skills_ls(path="skills")` 查看可用技能。
 
 ---
 
@@ -31,19 +31,18 @@ SKILL_GUIDE_PROMPT = """# 技能系统 (Skills System)
 
 ### 1. 发现可用技能
 ```python
-skills_list()              # 列出所有技能（名称 + 简介）
-skills_list(verbose=True)  # 显示详细信息
+skills_ls(path="skills")  # 列出所有技能（名称 + 简介）
 ```
 
 ### 2. 学习技能用法
 ```python
-skills_read(name="skill-name")  # 阅读技能说明书
+skills_read(path="skills/skill-name/SKILL.md")  # 阅读技能说明书
 ```
 
 ### 3. 查看技能内部文件
 ```python
-skills_list(name="skill-name")                        # 列出技能包含的文件
-skills_read(name="skill-name", file="scripts/xxx.py") # 查看具体脚本
+skills_ls(path="skills/skill-name")                      # 列出技能包含的文件
+skills_read(path="skills/skill-name/scripts/xxx.py")     # 查看具体脚本
 ```
 
 ### 4. 执行技能
@@ -51,7 +50,34 @@ skills_read(name="skill-name", file="scripts/xxx.py") # 查看具体脚本
 skills_run(name="skill-name", command="python scripts/xxx.py <args>")
 ```
 
-**⚠️ 重要**：执行技能前，务必先用 `skills_list(name="...")` 确认正确的脚本路径，**严禁编造脚本名称**。
+**⚠️ 重要**：执行技能前，务必先用 `skills_ls(path="skills/...")` 确认正确的脚本路径，**严禁编造脚本名称**。
+
+---
+
+## 文件系统访问 (File Access)
+
+本系统采用 **路径镜像 (Path Mirroring)** 策略，Docker 容器已挂载宿主机文件系统。
+
+**你拥有对宿主机的直接文件访问权限。**
+
+### 直接操作文件
+不需要上传下载，直接使用文件的**绝对路径**：
+
+```python
+# 直接读取宿主机文件
+skills_read(path="/Users/me/Documents/report.pdf")
+
+# 直接在宿主机目录执行命令
+skills_run(name="pdf-tools", command="python scripts/extract.py /Users/me/Documents/report.pdf")
+
+# 结果直接写入宿主机
+skills_write(path="/Users/me/Desktop/result.txt", content="Analysis complete")
+```
+
+**⚠️ 严禁**：
+- ❌ 不要尝试上传文件内容（upload 工具已废弃）
+- ❌ 不要把时间浪费在 Base64 编码解码上
+- ✅ 总是优先使用绝对路径操作
 
 ---
 
@@ -77,8 +103,8 @@ managed = true
 如果脚本需要第三方库，编辑 `scripts/pyproject.toml` 的 `dependencies`：
 
 ```python
-skills_read(name="my-skill", file="scripts/pyproject.toml")  # 先读取
-skills_write(name="my-skill", file="scripts/pyproject.toml", content='''[project]
+skills_read(path="skills/my-skill/scripts/pyproject.toml")  # 先读取
+skills_write(path="skills/my-skill/scripts/pyproject.toml", content='''[project]
 name = "my-skill-scripts"
 version = "0.1.0"
 requires-python = ">=3.12"
@@ -105,7 +131,7 @@ managed = true
 **⚠️ 强制要求**：当用户要求创建新技能时，你**必须**先阅读 `skill-creator` 技能：
 
 ```python
-skills_read(name="skill-creator")
+skills_read(path="skills/skill-creator/SKILL.md")
 ```
 
 **禁止**：
@@ -114,7 +140,7 @@ skills_read(name="skill-creator")
 - ❌ 不要跳过阅读 `skill-creator` 直接调用 `skills_create`
 
 **正确流程**：
-1. 先执行 `skills_read(name="skill-creator")` 学习创建规范
+1. 先执行 `skills_read(path="skills/skill-creator/SKILL.md")` 学习创建规范
 2. 按照 `skill-creator` 中的指导创建技能
 
 `skill-creator` 是创建技能的**唯一权威指南**，包含：
@@ -125,15 +151,16 @@ skills_read(name="skill-creator")
 
 ---
 
-## 工具速查
+## 工具速查（6 个工具）
 
 | 工具 | 用途 |
 |------|------|
-| `skills_list()` | 列出所有可用技能 |
-| `skills_list(name="X")` | 列出技能 X 的文件 |
-| `skills_read(name="X")` | 阅读技能 X 的说明书 |
-| `skills_read(name="X", file="Y")` | 读取技能 X 中的文件 Y |
+| `skills_ls(path="skills")` | 列出所有可用技能 |
+| `skills_ls(path="skills/X")` | 列出技能 X 的文件 |
+| `skills_read(path="skills/X/SKILL.md")` | 阅读技能 X 的说明书 |
+| `skills_read(path="skills/X/Y")` | 读取技能 X 中的文件 Y |
+| `skills_write(path="skills/X/Y", content="...")` | 向技能 X 写入文件 Y |
 | `skills_run(name="X", command="...")` | 在技能 X 目录下执行命令 |
-| `skills_create(...)` | 创建新技能（**必须先读 skill-creator**） |
-| `skills_write(...)` | 向技能添加文件（**必须先读 skill-creator**） |
+| `skills_create(name, description, instructions)` | 创建新技能（**必须先读 skill-creator**） |
+| `skills_bash(command="...")` | 执行通用命令（rm, grep, mkdir 等） |
 """
