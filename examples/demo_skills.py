@@ -4,7 +4,11 @@ This script demonstrates how to use the agent-skills MCP server
 with LangChain to create an interactive AI agent that can:
 - Execute shell commands (skills_bash)
 - Read/write files (skills_read, skills_write)
+- Create and modify skills (skills_create, skills_write)
 - Discover and use skills via MCP Resources
+
+这个 demo 在本地运行（不使用 Docker），适合开发和测试。
+如需 Docker 运行版本，请使用 demo_with_docker.py。
 
 Usage:
     python examples/demo_skills.py
@@ -84,9 +88,25 @@ BASE_SYSTEM_PROMPT = """\
 You are a helpful AI assistant with access to a set of tools for file operations, 
 command execution, and skill management.
 
+## 文件访问方式
+
+你有两个主要目录：
+- `skills/` - 技能目录（可读写，用于创建和修改技能）
+- `workspace/` - 工作空间（用于临时文件和用户数据）
+
+### 路径使用方式
+
+1. **工作空间文件**：直接使用相对路径或 `workspace/` 前缀
+   - `skills_ls()` - 列出工作空间
+   - `skills_read(path="data.txt")` - 读取文件
+   - `skills_write(path="output.txt", content="...")` - 写入文件
+
+2. **技能目录**：使用 `skills/` 前缀
+   - `skills_ls(path="skills")` - 列出所有技能
+   - `skills_read(path="skills/my-skill/SKILL.md")` - 读取技能说明
+
 ## Available Tools
 
-You have access to the following tools via MCP:
 - `skills_bash`: Execute shell commands (ls, cat, grep, python, etc.)
 - `skills_ls`: List files and directories
 - `skills_read`: Read file contents
@@ -101,7 +121,6 @@ You have access to the following tools via MCP:
 3. Use `skills_read(path="skills/<name>/SKILL.md")` to learn how to use a skill
 4. Be concise and helpful in your responses
 5. Always explain what you're doing before executing commands
-6. You have direct access to the filesystem. Use absolute paths to read/write files directly.
 """
 
 

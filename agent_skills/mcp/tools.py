@@ -2,6 +2,12 @@
 
 Provides 6 tools with skills_ prefix for a Docker-based execution environment.
 Skills are exposed as MCP Resources for progressive disclosure.
+
+Supports flexible path resolution:
+- skills/xxx         -> SKILLS_DIR/xxx (skill directories, read-write)
+- workspace/xxx      -> WORKSPACE_DIR/xxx (user's workspace, read-write)
+- ./xxx or xxx       -> WORKSPACE_DIR/xxx (relative to workspace)
+- /absolute/path     -> direct access (backwards compatible)
 """
 
 # pyright: reportUnusedFunction=false
@@ -23,9 +29,68 @@ from agent_skills.core.types import ToolStatus
 from agent_skills.mcp.prompts import SKILL_GUIDE_PROMPT
 
 
-# Workspace directory for uploaded files and temporary data
-WORKSPACE_DIR = Path(os.environ.get("SKILLS_WORKSPACE", "/workspace"))
+# ============================================
+# Path Configuration
+# ============================================
+# Skills directory for skill packages (read-only)
 SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", "/skills"))
+# Workspace directory - user mounts their project here (read-write)
+WORKSPACE_DIR = Path(os.environ.get("SKILLS_WORKSPACE", "/workspace"))
+
+
+def resolve_path(path: str, allow_absolute: bool = True) -> Path:
+    """Resolve a virtual path to an actual filesystem path.
+    
+    Path Resolution Rules:
+    1. "skills/xxx"     -> SKILLS_DIR/xxx (skill packages)
+    2. "workspace/xxx"  -> WORKSPACE_DIR/xxx (user's mounted workspace)
+    3. "./xxx" or "xxx" -> WORKSPACE_DIR/xxx (relative paths)
+    4. "/absolute/path" -> direct use if allow_absolute=True
+    
+    Args:
+        path: The path to resolve
+        allow_absolute: Whether to allow absolute paths (for backwards compatibility)
+        
+    Returns:
+        Resolved Path object
+    """
+    path = path.strip()
+    
+    # Handle empty path
+    if not path or path == "/":
+        return WORKSPACE_DIR
+    
+    # Virtual path prefixes
+    if path.startswith("skills/"):
+        # Remove "skills/" prefix and resolve against SKILLS_DIR
+        return SKILLS_DIR / path[7:]  # len("skills/") = 7
+    
+    if path.startswith("workspace/"):
+        return WORKSPACE_DIR / path[10:]  # len("workspace/") = 10
+    
+    # Relative path (./xxx or just xxx without prefix)
+    if path.startswith("./"):
+        return WORKSPACE_DIR / path[2:]
+    
+    # Absolute path - check if allowed and if it exists
+    if path.startswith("/"):
+        if allow_absolute:
+            return Path(path)
+        else:
+            # Fall back to workspace for security
+            return WORKSPACE_DIR / path.lstrip("/")
+    
+    # Default: treat as relative to workspace
+    return WORKSPACE_DIR / path
+
+
+def get_path_info() -> dict[str, str]:
+    """Get information about configured paths for debugging."""
+    return {
+        "skills": str(SKILLS_DIR),
+        "workspace": str(WORKSPACE_DIR),
+        "workspace_exists": str(WORKSPACE_DIR.exists()),
+    }
 
 
 async def _run_with_uv_isolation(
@@ -247,29 +312,29 @@ def register_tools(
     def skills_ls(
         path: str = Field(
             default="",
-            description="Path to list. Empty for workspace root, 'skills' for skills dir, or specific path"
+            description="Path to list. Supports: 'skills', 'workspace', or specific paths"
         ),
     ) -> str:
         """List files and directories.
 
-        Paths:
-        - "" or "/" : List workspace root (uploaded files)
-        - "skills" : List all skills
-        - "skills/<skill-name>" : List files in a skill
-        - Any other path relative to workspace
+        Virtual Paths:
+        - ""              : List workspace root (user's mounted directory)
+        - "skills"        : List all available skills
+        - "skills/<name>" : List files in a specific skill
+        - "workspace/xxx" : List in workspace directory
+        - "./xxx" or "xxx": Relative to workspace
+        - "/absolute"     : Direct path (if accessible)
 
         Examples:
-        - skills_ls() - list workspace
+        - skills_ls() - list workspace (user's project root)
         - skills_ls(path="skills") - list all skills
         - skills_ls(path="skills/gcd-calculator") - list skill files
+        - skills_ls(path="src") - list src/ in workspace
         """
         actual_path = path if isinstance(path, str) else ""
         
-        # Determine target directory
-        if actual_path == "" or actual_path == "/":
-            target = WORKSPACE_DIR
-        elif actual_path == "skills":
-            # List all skills
+        # Special case: list all skills
+        if actual_path == "skills":
             skills = skill_manager.discover_skills()
             if not skills:
                 return "No skills found"
@@ -277,21 +342,30 @@ def register_tools(
             for skill in skills:
                 lines.append(f"  {skill.name}/  - {skill.description}")
             return f"Skills ({len(skills)}):\n" + "\n".join(lines)
-        elif actual_path.startswith("skills/"):
-            # List files in a specific skill
-            skill_name = actual_path.split("/")[1]
+        
+        # Handle skills/<skill-name> paths specially (need skill manager)
+        if actual_path.startswith("skills/"):
+            parts = actual_path.split("/")
+            skill_name = parts[1]
             skill_path = skill_manager.get_skill_path(skill_name)
             if not skill_path:
                 return f"Error: skill '{skill_name}' not found"
-            
-            # If there's more path after skill name
-            remaining = "/".join(actual_path.split("/")[2:])
+            remaining = "/".join(parts[2:])
             target = skill_path / remaining if remaining else skill_path
         else:
-            target = WORKSPACE_DIR / actual_path
+            # Use generic path resolution
+            target = resolve_path(actual_path)
         
         if not target.exists():
-            return f"Error: path '{actual_path}' not found"
+            # Provide helpful error for empty workspace
+            if actual_path == "" or actual_path == "workspace":
+                return (
+                    f"Workspace directory is empty or not mounted.\n"
+                    f"(resolved to: {target})\n\n"
+                    "To mount your project, use:\n"
+                    "  docker run -v /your/project:/workspace ..."
+                )
+            return f"Error: path '{actual_path}' not found (resolved to: {target})"
         
         if not target.is_dir():
             return f"Error: '{actual_path}' is not a directory"
@@ -308,9 +382,9 @@ def register_tools(
                 items.append(f"  {item.name}  ({size} bytes)")
         
         if not items:
-            return f"Directory '{actual_path}' is empty"
+            return f"Directory '{actual_path or 'workspace'}' is empty"
         
-        return f"Contents of '{actual_path or '/'}' ({len(items)} items):\n" + "\n".join(items)
+        return f"Contents of '{actual_path or 'workspace'}' ({len(items)} items):\n" + "\n".join(items)
 
     # ============================================
     # Tool 3: skills_read - Read file content
@@ -322,17 +396,19 @@ def register_tools(
     ) -> str:
         """Read file content (text files only).
 
-        Paths:
-        - "skills/<skill-name>/SKILL.md" : Read skill instructions
-        - "skills/<skill-name>/scripts/xxx.py" : Read skill script
-        - "<filename>" : Read from workspace
+        Virtual Paths:
+        - "skills/<name>/SKILL.md"        : Read skill instructions
+        - "skills/<name>/scripts/xxx.py"  : Read skill script
+        - "workspace/<filename>"          : Read from workspace
+        - "./<filename>" or "<filename>"  : Relative to workspace
+        - "/absolute/path"                : Direct path (if accessible)
 
         Examples:
         - skills_read(path="skills/gcd-calculator/SKILL.md")
-        - skills_read(path="skills/gcd-calculator/scripts/gcd.py")
-        - skills_read(path="uploaded_file.txt")
+        - skills_read(path="src/main.py")  # Read from workspace
+        - skills_read(path="workspace/output/result.txt")
         """
-        # Determine target file
+        # Handle skills/ paths specially (need skill manager for path resolution)
         if path.startswith("skills/"):
             parts = path.split("/")
             if len(parts) < 2:
@@ -345,10 +421,11 @@ def register_tools(
             remaining = "/".join(parts[2:]) if len(parts) > 2 else "SKILL.md"
             target = skill_path / remaining
         else:
-            target = WORKSPACE_DIR / path
+            # Use generic path resolution for all other paths
+            target = resolve_path(path)
         
         if not target.exists():
-            return f"Error: file '{path}' not found"
+            return f"Error: file '{path}' not found (resolved to: {target})"
         
         if target.is_dir():
             return f"Error: '{path}' is a directory, use skills_ls() instead"
@@ -357,7 +434,7 @@ def register_tools(
             content = target.read_text(encoding="utf-8")
             return content
         except UnicodeDecodeError:
-            return f"Error: '{path}' is not a text file, use skills_download() for binary files"
+            return f"Error: '{path}' is not a text file (binary file)"
         except Exception as e:
             return f"Error reading file: {e}"
 
@@ -374,15 +451,18 @@ def register_tools(
 
         Creates parent directories automatically if they don't exist.
         
-        Paths:
-        - "skills/<skill-name>/<file>" : Write to skill directory
-        - "<filename>" : Write to workspace
+        Virtual Paths:
+        - "skills/<name>/<file>"          : Write to skill directory
+        - "workspace/<filename>"          : Write to workspace
+        - "./<filename>" or "<filename>"  : Relative to workspace
+        - "/absolute/path"                : Direct path (if writable)
 
         Examples:
         - skills_write(path="skills/my-skill/scripts/run.py", content="print('hello')")
-        - skills_write(path="output.txt", content="result data")
+        - skills_write(path="output/result.txt", content="result data")
+        - skills_write(path="workspace/data.json", content="{...}")
         """
-        # Determine target file
+        # Handle skills/ paths specially (need skill manager for path resolution)
         if path.startswith("skills/"):
             parts = path.split("/")
             if len(parts) < 3:
@@ -395,7 +475,8 @@ def register_tools(
             remaining = "/".join(parts[2:])
             target = skill_path / remaining
         else:
-            target = WORKSPACE_DIR / path
+            # Use generic path resolution
+            target = resolve_path(path)
         
         try:
             # Ensure parent directory exists
@@ -405,6 +486,8 @@ def register_tools(
             target.write_text(content, encoding="utf-8")
             
             return f"Successfully wrote {len(content)} bytes to '{path}'"
+        except PermissionError:
+            return f"Error: permission denied writing to '{path}'. Check mount permissions."
         except Exception as e:
             return f"Error writing file: {e}"
 
@@ -483,24 +566,32 @@ def register_tools(
     async def skills_bash(
         command: str = Field(description="Shell command to execute"),
         timeout: int = Field(default=60, description="Maximum execution time in seconds"),
-        cwd: str = Field(default="", description="Working directory (relative to workspace or absolute)"),
+        cwd: str = Field(default="", description="Working directory (supports virtual paths)"),
     ) -> str:
         """Execute a shell command in the execution environment.
 
         This is for general commands like rm, grep, mkdir, etc.
         For running skill scripts, use skills_run() instead.
 
+        Working Directory (cwd):
+        - ""              : Workspace root (user's project, default)
+        - "skills/<name>" : Inside a skill directory
+        - "workspace/xxx" : Inside workspace subdirectory
+        - "./xxx" or "xxx": Relative to workspace
+        - "/absolute"     : Direct path
+
         Examples:
-        - skills_bash(command="ls -la")
-        - skills_bash(command="grep -r 'pattern' .")
-        - skills_bash(command="rm -rf temp/")
-        - skills_bash(command="mkdir -p output/data")
+        - skills_bash(command="ls -la")  # List workspace (user's project)
+        - skills_bash(command="python main.py")  # Run in workspace
+        - skills_bash(command="grep -r 'pattern' .", cwd="src")
+        - skills_bash(command="npm install", cwd="workspace")
         """
         actual_timeout = timeout if isinstance(timeout, int) else 60
         
-        # Determine working directory
+        # Determine working directory using path resolution
         if cwd and isinstance(cwd, str):
             if cwd.startswith("skills/"):
+                # Handle skills/ paths with skill manager
                 parts = cwd.split("/")
                 skill_name = parts[1]
                 skill_path = skill_manager.get_skill_path(skill_name)
@@ -508,9 +599,10 @@ def register_tools(
                     remaining = "/".join(parts[2:]) if len(parts) > 2 else ""
                     work_dir = skill_path / remaining if remaining else skill_path
                 else:
-                    work_dir = WORKSPACE_DIR
+                    return f"Error: skill '{skill_name}' not found"
             else:
-                work_dir = WORKSPACE_DIR / cwd
+                # Use generic path resolution
+                work_dir = resolve_path(cwd)
         else:
             work_dir = WORKSPACE_DIR
         
@@ -518,7 +610,7 @@ def register_tools(
             try:
                 work_dir.mkdir(parents=True, exist_ok=True)
             except Exception:
-                pass # Ignore creation errors for absolute paths that might require permissions
+                return f"Error: cannot access working directory '{cwd}' (resolved to: {work_dir})"
         
         try:
             process = await asyncio.create_subprocess_shell(

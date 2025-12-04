@@ -64,10 +64,11 @@ ENV SKILLS_WORKSPACE=/workspace
 ENV SKILLS_DIR=/skills
 ENV PYTHONUNBUFFERED=1
 
-# Set workspace as default working directory
+# Set workspace as default working directory for user operations
 WORKDIR /workspace
 
 # Default command: start MCP server in stdio mode
-ENTRYPOINT ["uv", "run", "agent-skills-server"]
+# Use --directory to ensure uv finds the project regardless of current working directory
+ENTRYPOINT ["uv", "run", "--directory", "/app", "agent-skills-server"]
 CMD ["--quiet"]
 

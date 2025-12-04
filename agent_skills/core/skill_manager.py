@@ -50,22 +50,27 @@ class SkillManager:
         Initialize SkillManager.
 
         Args:
-            skills_dirs: List of directories to search for skills
+            skills_dirs: List of directories to search for skills (prioritized over builtin)
             builtin_skills_dir: Built-in skills directory (default: agent_skills/skills/)
         """
         # Default skills directories
         self._skills_dirs: list[Path] = []
 
-        # Add built-in skills directory (default location for new skills)
+        # Set built-in skills directory for creating new skills
         self._builtin_skills_dir = builtin_skills_dir or (Path(__file__).parent.parent / "skills")
-        if self._builtin_skills_dir.exists():
-            self._skills_dirs.append(self._builtin_skills_dir)
 
-        # Add user-provided directories
+        # IMPORTANT: Add user-provided directories FIRST for priority
+        # This ensures mounted/external directories take precedence over builtin
+        # so that files written to external dirs are persisted and discoverable
         if skills_dirs:
             for dir_path in skills_dirs:
                 if dir_path.exists() and dir_path.is_dir():
                     self._skills_dirs.append(dir_path)
+
+        # Add built-in skills directory LAST (lower priority)
+        # This allows builtin skills to be overridden by external ones
+        if self._builtin_skills_dir.exists():
+            self._skills_dirs.append(self._builtin_skills_dir)
 
     def discover_skills(self) -> list[SkillInfo]:
         """

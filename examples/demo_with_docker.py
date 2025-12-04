@@ -3,17 +3,36 @@
 这是一个通用的交互式 Agent Demo，展示了 Agent Skills 的完整能力。
 它与 demo_skills.py 的主要区别在于：
 1. **Docker 运行**: 自动启动 Docker 容器运行 MCP Server
-2. **路径镜像**: 挂载宿主机根目录，让 Agent 可以直接通过绝对路径操作文件
+2. **工作空间挂载**: 用户项目目录挂载到 /workspace
 
-你可以像这样与它对话：
+## 使用方式
+
+### 挂载项目目录（推荐）
+    python examples/demo_with_docker.py --workspace /path/to/your/project
+    python examples/demo_with_docker.py -w ~/my-project
+    
+    Agent 可以直接访问：
+    - "列出工作空间的文件"
+    - "读取 src/main.py"
+    - "运行 python main.py"
+
+### 挂载整个用户目录（完全访问，向后兼容）
+    python examples/demo_with_docker.py
+    
+    可以使用绝对路径：
+    - "读取 /Users/me/Desktop/test.txt"
+
+## 示例对话
 - "查看 skills 目录下有哪些技能"
+- "列出工作空间的文件"
 - "帮我创建一个新技能叫 hello-world"
-- "读取 /Users/nanjiayan/Desktop/test.txt 的内容" (直接使用绝对路径!)
 
 Usage:
     python examples/demo_with_docker.py
+    python examples/demo_with_docker.py --workspace /path/to/project
 """
 
+import argparse
 import asyncio
 import json
 import logging
@@ -69,15 +88,27 @@ console = Console(theme=custom_theme)
 USER_HOME = Path.home()
 
 # Base System Prompt
-BASE_SYSTEM_PROMPT = f"""
+BASE_SYSTEM_PROMPT = """
 You are a generic AI assistant powered by Dockerized Agent Skills.
 
-# KEY CAPABILITY: Direct File Access
-You are running in a Docker container that has **mirrored access** to the host filesystem.
-This means you can access files on the user's computer using their **absolute paths**.
+# 文件访问方式
 
-- ❌ DO NOT ask the user to upload files.
-- ✅ DO use absolute paths directly (e.g., `/Users/username/Desktop/file.txt`).
+你运行在 Docker 容器中，有两个主要目录：
+- `/skills` - 技能目录（可读写，用于创建和修改技能）
+- `/workspace` - 工作空间（用户挂载的项目目录）
+
+## 路径使用方式
+
+1. **工作空间文件**（用户项目）：直接使用相对路径
+   - `skills_ls()` - 列出工作空间
+   - `skills_read(path="src/main.py")` - 读取文件
+   - `skills_bash(command="python main.py")` - 执行命令
+
+2. **技能目录**：使用 `skills/` 前缀
+   - `skills_ls(path="skills")` - 列出技能
+   - `skills_read(path="skills/my-skill/SKILL.md")` - 读取技能
+
+3. **绝对路径**（如果用户挂载了完整文件系统）：直接使用
 
 # Available Tools
 - `skills_bash`: Execute shell commands
@@ -88,9 +119,9 @@ This means you can access files on the user's computer using their **absolute pa
 - `skills_run`: Run skill scripts
 
 # Guidelines
-1. Always check `skills_ls` before assuming file existence.
+1. Use `skills_ls()` to see workspace contents (user's project).
 2. Use `skills_ls(path="skills")` to see available skills.
-3. If the user mentions a file, assume you can access it via its absolute path.
+3. Use relative paths for workspace files, `skills/` prefix for skills.
 """
 
 def print_tool_call(tool_name: str, tool_args: dict[str, Any]) -> None:
@@ -124,32 +155,57 @@ def print_streaming_text(text: str) -> None:
     sys.stdout.write(text)
     sys.stdout.flush()
 
-async def main():
+async def main(workspace_dir: str | None = None):
     if not os.getenv("OPENAI_API_KEY"):
         console.print("[error]Error: OPENAI_API_KEY not set![/error]")
         return
 
-    # Docker arguments for Path Mirroring
+    # Docker arguments
     docker_cmd = "docker"
     docker_args = [
         "run", "-i", "--rm",
         # Force uv to use the container's venv, not the mounted host venv
         "-e", "UV_PROJECT_ENVIRONMENT=/app/.venv",
-        # 1. Mount User Home -> User Home (The Magic)
-        "-v", f"{USER_HOME}:{USER_HOME}",
-        # 2. Mount Skills
-        "-v", f"{PROJECT_ROOT}/agent_skills/skills:/skills:ro",
-        # 3. Set Working Directory to current dir
-        "-w", str(os.getcwd()),
-        # 4. Image
-        "agent-skills:latest"
     ]
+    
+    # Determine mount strategy
+    if workspace_dir:
+        # Mode: Mount specific directory to /workspace (recommended)
+        workspace_path = Path(workspace_dir).resolve()
+        if not workspace_path.exists():
+            console.print(f"[error]Error: Directory '{workspace_dir}' does not exist![/error]")
+            return
+        
+        docker_args.extend([
+            # Mount user's project to /workspace
+            "-v", f"{workspace_path}:/workspace",
+        ])
+        mount_info = f"📂 Workspace: {workspace_path} → /workspace"
+        access_tip = "💡 Access files directly: skills_ls(), skills_read('src/main.py')"
+    else:
+        # Mode: Mount entire home directory (full access, backwards compatible)
+        docker_args.extend([
+            # Mount User Home -> User Home (The Magic)
+            "-v", f"{USER_HOME}:{USER_HOME}",
+            # Also set workspace to home for convenience
+            "-e", f"SKILLS_WORKSPACE={USER_HOME}",
+        ])
+        mount_info = f"📂 Full Access: {USER_HOME}"
+        access_tip = "💡 Use absolute paths or relative to home"
+    
+    # Common mounts
+    docker_args.extend([
+        # Mount Skills (read-write to allow creating/modifying skills)
+        "-v", f"{PROJECT_ROOT}/agent_skills/skills:/skills",
+        # Image
+        "agent-skills:latest"
+    ])
 
     console.print(Panel.fit(
         "[bold]🚀 Agent Skills Docker Interactive Demo[/bold]\n\n"
-        f"🐳 Docker Command: {docker_cmd} {' '.join(docker_args)}\n"
-        f"📂 Host Access: Enabled ({USER_HOME})\n"
-        "💡 Tip: You can ask me to read/write any file on your computer!",
+        f"🐳 Docker: {docker_cmd} run ...\n"
+        f"{mount_info}\n"
+        f"{access_tip}",
         border_style="green"
     ))
 
@@ -281,5 +337,31 @@ async def main():
         if "docker" in str(e).lower():
             console.print("[warning]Make sure Docker is running and the image 'agent-skills:latest' is built.[/warning]")
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Agent Skills Docker Interactive Demo",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Mount specific project directory to /workspace (recommended)
+  python examples/demo_with_docker.py --workspace /path/to/your/project
+  python examples/demo_with_docker.py -w ~/my-project
+  
+  # Full host access (mount entire home directory)
+  python examples/demo_with_docker.py
+"""
+    )
+    parser.add_argument(
+        "-w", "--workspace",
+        type=str,
+        default=None,
+        help="Path to mount as /workspace (your project directory). "
+             "If not specified, mounts entire home directory for full access."
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(workspace_dir=args.workspace))

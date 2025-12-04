@@ -80,7 +80,8 @@ Environment Variables:
 
 Docker Usage:
   docker run -i --rm \\
-    -v ~/.agent-skills/skills:/skills:ro \\
+    -v /path/to/project:/workspace \\
+    -v ~/.agent-skills/skills:/skills \\
     agent-skills:latest
         """,
     )

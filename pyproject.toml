@@ -22,9 +22,18 @@ agent-skills-server = "agent_skills.mcp.server:main"
 [project.optional-dependencies]
 # Demo 示例所需依赖
 demo = [
-    "langchain>=0.3.0",
+    "langchain>=1.0.0",
     "langchain-openai>=0.2.0",
-    "langchain-mcp-adapters>=0.1.0",
+    "langchain-mcp-adapters>=0.1.14",
+    "python-dotenv>=1.0.0",
+    "rich>=14.0.0",
+]
+# Deep Agent 示例所需依赖 (LangChain Deep Agents)
+deepagent = [
+    "deepagents>=0.2.8",
+    "tavily-python>=0.7.0",
+    "langchain>=1.0.0",
+    "langchain-mcp-adapters>=0.1.14",
     "python-dotenv>=1.0.0",
     "rich>=14.0.0",
 ]

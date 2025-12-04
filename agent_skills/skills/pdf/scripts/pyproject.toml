@@ -1,0 +1,15 @@
+[project]
+name = "pdf-scripts"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pdf2image",
+    "markdown>=3.5",
+    "reportlab>=4.0",
+    "pypdf>=3.0",
+    "weasyprint>=61.0",
+    "cffi>=1.0"
+]
+
+[tool.uv]
+managed = true

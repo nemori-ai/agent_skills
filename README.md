@@ -21,10 +21,16 @@
 docker build -t agent-skills:latest -f docker/Dockerfile .
 
 # 运行 MCP Server
-# 关键：-v /Users/me:/Users/me 让容器内的路径与宿主机一致
+# 方式1: 挂载项目目录到 /workspace（推荐）
+docker run -i --rm \
+  -v /path/to/my-project:/workspace \
+  -v ~/.agent-skills/skills:/skills \
+  agent-skills:latest
+
+# 方式2: 挂载整个用户目录（完全访问）
 docker run -i --rm \
   -v /Users/me:/Users/me \
-  -v ~/.agent-skills/skills:/skills:ro \
+  -v ~/.agent-skills/skills:/skills \
   agent-skills:latest
 ```
 
@@ -38,13 +44,15 @@ docker run -i --rm \
     "agent-skills": {
       "command": "docker",
       "args": ["run", "-i", "--rm",
-               "-v", "/Users/nanjiayan:/Users/nanjiayan",
-               "-v", "~/.agent-skills/skills:/skills:ro",
+               "-v", "/path/to/my-project:/workspace",
+               "-v", "~/.agent-skills/skills:/skills",
                "agent-skills:latest"]
     }
   }
 }
 ```
+
+> **注意**: `/skills` 目录需要读写权限，以便 Agent 可以创建和修改技能。
 
 ### 本地开发
 
@@ -54,6 +62,60 @@ uv sync
 
 # 启动 MCP Server
 uv run agent-skills-server
+```
+
+## 示例 Demo
+
+提供三个示例来演示不同场景：
+
+### 1. 本地 Demo（开发测试）
+
+```bash
+# 安装 demo 依赖
+uv sync --extra demo
+
+# 运行
+python examples/demo_skills.py
+```
+
+### 2. Docker Demo（生产环境）
+
+```bash
+# 安装 demo 依赖
+uv sync --extra demo
+
+# 构建 Docker 镜像
+docker build -t agent-skills:latest -f docker/Dockerfile .
+
+# 运行
+python examples/demo_with_docker.py --workspace /path/to/your/project
+```
+
+### 3. Deep Agent Demo（高级功能）
+
+结合 LangChain Deep Agent 实现任务规划、子代理和网络搜索：
+
+```bash
+# 安装 deepagent 依赖
+uv sync --extra deepagent
+
+# 构建 Docker 镜像
+docker build -t agent-skills:latest -f docker/Dockerfile .
+
+# 运行（需要在 .env 中配置 ANTHROPIC_API_KEY）
+python examples/demo_deepagent.py --workspace /path/to/your/project
+```
+
+**Deep Agent 特性：**
+- 🧠 自动任务规划（`write_todos`）
+- 📂 共享文件系统（Deep Agent 和 Skills MCP 使用同一 workspace）
+- 🔍 网络搜索（需要 TAVILY_API_KEY）
+- 🤖 子代理支持（复杂任务自动拆分）
+
+**环境变量（.env）：**
+```
+ANTHROPIC_API_KEY=your-anthropic-api-key
+TAVILY_API_KEY=your-tavily-api-key  # 可选，用于网络搜索
 ```
 
 ## MCP 工具列表（6 个）
