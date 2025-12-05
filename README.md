@@ -1,6 +1,6 @@
 # Agent Skills
 
-一个为 AI Agent 提供的全栈 Skills 系统，通过 MCP Server 暴露精简的工具接口。
+一个为 AI Agent 提供的全栈 Skills 系统，支持 **MCP Server** 和 **Python Middleware** 两种集成方式。
 
 ## 功能特性
 
@@ -8,7 +8,9 @@
 - **Docker 隔离执行**: 在容器中运行命令，预装常用工具和库
 - **路径镜像 (Path Mirroring)**: 通过挂载宿主机文件系统，Agent 可直接使用绝对路径操作文件，无需上传下载
 - **渐进式披露**: Skills 作为 MCP Resource 暴露，预加载元数据，按需读取内容
-- **MCP 协议**: 标准 MCP Server 接口，可与任何支持 MCP 的 AI 系统集成
+- **双重集成方式**:
+  - **MCP 协议**: 标准 MCP Server 接口，可与任何支持 MCP 的 AI 系统集成（Claude Desktop, Cursor 等）
+  - **Python Middleware**: 原生 LangChain 集成，无需 MCP 协议，更低延迟
 
 ## 快速开始
 
@@ -66,7 +68,7 @@ uv run agent-skills-server
 
 ## 示例 Demo
 
-提供三个示例来演示不同场景：
+提供四个示例来演示不同场景：
 
 ### 1. 本地 Demo（开发测试）
 
@@ -91,9 +93,9 @@ docker build -t agent-skills:latest -f docker/Dockerfile .
 python examples/demo_with_docker.py --workspace /path/to/your/project
 ```
 
-### 3. Deep Agent Demo（高级功能）
+### 3. Deep Agent + MCP Demo
 
-结合 LangChain Deep Agent 实现任务规划、子代理和网络搜索：
+结合 LangChain Deep Agent + MCP Client 实现任务规划、子代理和网络搜索：
 
 ```bash
 # 安装 deepagent 依赖
@@ -103,12 +105,37 @@ uv sync --extra deepagent
 docker build -t agent-skills:latest -f docker/Dockerfile .
 
 # 运行（需要在 .env 中配置 ANTHROPIC_API_KEY）
-python examples/demo_deepagent.py --workspace /path/to/your/project
+python examples/demo_deepagent.py
 ```
 
-**Deep Agent 特性：**
+### 4. Deep Agent + Middleware Demo（推荐 ⭐）
+
+使用 **Python 原生 Middleware** 替代 MCP 协议，更低延迟，集成更简洁：
+
+```bash
+# 安装依赖
+uv sync --extra deepagent
+uv pip install docker  # Middleware 需要 docker 包
+
+# 构建 Docker 镜像
+docker build -t agent-skills:latest -f docker/Dockerfile .
+
+# 运行
+python examples/demo_middleware.py
+```
+
+**Middleware vs MCP 对比：**
+
+| 特性 | MCP (demo_deepagent.py) | Middleware (demo_middleware.py) |
+|------|------------------------|--------------------------------|
+| 协议 | JSON-RPC over stdio | Python 原生调用 |
+| 延迟 | 较高（进程间通信） | 较低（直接 docker exec） |
+| 依赖 | langchain-mcp-adapters | docker (Python SDK) |
+| 适用场景 | Claude Desktop, Cursor | LangChain/LangGraph 应用 |
+
+**Deep Agent 特性（两种集成方式都支持）：**
 - 🧠 自动任务规划（`write_todos`）
-- 📂 共享文件系统（Deep Agent 和 Skills MCP 使用同一 workspace）
+- 📂 共享文件系统（Deep Agent 和 Skills 使用同一 workspace）
 - 🔍 网络搜索（需要 TAVILY_API_KEY）
 - 🤖 子代理支持（复杂任务自动拆分）
 
@@ -118,9 +145,9 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 TAVILY_API_KEY=your-tavily-api-key  # 可选，用于网络搜索
 ```
 
-## MCP 工具列表（6 个）
+## 工具列表（6 个）
 
-所有工具都以 `skills_` 前缀开头，功能原子化：
+所有工具都以 `skills_` 前缀开头，功能原子化（MCP 和 Middleware 接口一致）：
 
 ### skills_bash - 执行命令
 
@@ -183,6 +210,50 @@ skills_run(name="pdf-tools", command="python scripts/extract.py /Users/me/doc.pd
 4. 结果直接生成在宿主机 (如 /Users/me/doc_processed.txt)
 5. Agent 读取结果返回给用户
 ```
+
+## Python Middleware 集成
+
+对于 LangChain/LangGraph 应用，可以使用 `DockerSkillsMiddleware` 直接集成，无需 MCP 协议：
+
+```python
+from agent_skills.core.middleware import DockerSkillsMiddleware
+
+# 初始化 Middleware（自动启动 Docker 容器）
+middleware = DockerSkillsMiddleware(
+    workspace_dir="/path/to/workspace",
+    skills_dir="/path/to/skills",
+)
+
+# 获取 LangChain 工具
+tools = middleware.get_tools()
+
+# 获取技能系统提示词（包含 SKILL_GUIDE_PROMPT + 可用技能列表）
+skills_prompt = middleware.get_prompt()
+
+# 创建 LangChain Agent
+from deepagents import create_deep_agent
+
+agent = create_deep_agent(
+    tools=tools,
+    system_prompt=f"You are a helpful assistant.\n\n{skills_prompt}",
+)
+```
+
+**Middleware 提供的方法：**
+
+| 方法 | 说明 |
+|------|------|
+| `get_tools()` | 返回 6 个 `skills_*` LangChain 工具 |
+| `get_prompt()` | 返回完整技能提示词（自动发现可用技能） |
+| `process(state)` | 运行时注入提示词到 Agent State（适用于 LangGraph） |
+
+**执行位置：**
+
+| 工具 | 执行位置 | 说明 |
+|------|----------|------|
+| `skills_run` | Docker 容器 | 通过 `docker exec` 执行，支持 `uv` 依赖隔离 |
+| `skills_bash` | Docker 容器 | 通过 `docker exec` 执行 |
+| `skills_ls/read/write/create` | 宿主机 | 直接操作挂载的文件系统，性能更优 |
 
 ## MCP Resources - 技能自动暴露
 
@@ -274,15 +345,23 @@ agent_skills/
 ├── agent_skills/
 │   ├── core/
 │   │   ├── skill_manager.py  # Skill 发现和管理
-│   │   └── types.py          # 类型定义
+│   │   ├── types.py          # 类型定义
+│   │   ├── middleware.py     # LangChain Middleware 集成
+│   │   ├── docker_runner.py  # Docker 容器管理
+│   │   └── tools_factory.py  # LangChain 工具工厂
 │   ├── mcp/
 │   │   ├── server.py         # MCP Server 入口
-│   │   ├── tools.py          # 6 个 skills_* 工具
+│   │   ├── tools.py          # 6 个 skills_* 工具 (MCP)
 │   │   └── prompts.py        # Skill Guide Prompt
 │   └── skills/               # 内置 skills
 ├── docker/
 │   ├── Dockerfile
 │   └── .dockerignore
+├── examples/
+│   ├── demo_skills.py        # 本地 Demo
+│   ├── demo_with_docker.py   # Docker Demo
+│   ├── demo_deepagent.py     # Deep Agent + MCP Demo
+│   └── demo_middleware.py    # Deep Agent + Middleware Demo ⭐
 ├── tests/
 ├── pyproject.toml
 └── README.md
