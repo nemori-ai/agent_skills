@@ -46,7 +46,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -569,9 +569,10 @@ async def run_agent_with_streaming(agent: Any, user_input: str) -> str:
     """Run agent with streaming events to show tool calls."""
     final_response = ""
     shown_tool_calls: set[str] = set()
+    state: dict[str, Any] = {"messages": [{"role": "user", "content": user_input}]}
     
     async for event in agent.astream_events(
-        {"messages": [{"role": "user", "content": user_input}]},
+        state,
         config={"recursion_limit": 50},
         version="v2",
     ):
@@ -649,7 +650,7 @@ async def main_async() -> None:
     fs_backend = LocalFilesystemBackend(WORKSPACE_DIR)
     console.print(f"[success]✓ Local filesystem enabled (workspace: {WORKSPACE_DIR})[/success]")
     
-    # Collect custom tools
+    # Collect custom tools (non-skill)
     custom_tools: list[Any] = []
     
     # Add search tool
@@ -658,32 +659,44 @@ async def main_async() -> None:
         custom_tools.append(search_tool)
     
     # Initialize Skills Middleware (replaces MCP client)
-    middleware, skills_tools = create_skills_middleware()
-    if skills_tools:
-        custom_tools.extend(skills_tools)
+    middleware, _skills_tools = create_skills_middleware()
     
-    # Get skills prompt from middleware (includes SKILL_GUIDE_PROMPT + available skills)
-    skills_prompt = ""
+    # 使用 LangChain 原生 middleware 方式注入（无需手动添加工具和提示词）
+    lc_middlewares: list[Any] = []
     if middleware:
         try:
-            skills_prompt = middleware.get_prompt()
             skills_count = len(middleware.skill_manager.discover_skills())
             console.print(f"[success]✓ Discovered {skills_count} skills[/success]")
+            
+            # 获取所有 LangChain 原生 middleware:
+            # 1. Lifecycle: @before_agent 启动 Docker 容器
+            # 2. Prompt: @dynamic_prompt 动态注入技能系统提示词
+            # 3. Tools: @before_model(tools=[...]) 注入 skills_* 工具
+            lc_middlewares = middleware.get_middlewares(stop_on_exit=False)
+            console.print(f"[success]✓ Created {len(lc_middlewares)} LangChain middleware instances[/success]")
         except Exception as e:
-            console.print(f"[warning]Could not get skills prompt: {e}[/warning]")
-    
+            console.print(f"[warning]Skills middleware unavailable: {e}[/warning]")
+            import traceback
+            console.print(traceback.format_exc(), style="dim red")
+            middleware = None
+
     console.print()
     
     # Store llm reference for OpenAI backend
     llm = None
     
     # Create the deep agent with LocalFilesystemBackend
+    # 使用 LangChain 原生 middleware 方式：
+    # - 基础 system_prompt 只包含非技能相关的内容
+    # - 技能提示词通过 @dynamic_prompt middleware 动态注入
+    # - 技能工具通过 @before_model(tools=[...]) middleware 注入
     try:
         if backend == "anthropic":
             agent = create_deep_agent(
-                tools=custom_tools,
+                tools=custom_tools,  # 只包含非技能工具（如 internet_search）
                 backend=fs_backend,  # type: ignore[arg-type]
-                system_prompt=get_system_prompt(skills_prompt),
+                system_prompt=get_system_prompt(),  # 基础提示词，技能部分由 middleware 注入
+                middleware=lc_middlewares,  # LangChain 原生 middleware
             )
         else:
             from langchain_openai import ChatOpenAI
@@ -695,8 +708,9 @@ async def main_async() -> None:
             agent = create_deep_agent(
                 tools=custom_tools,
                 backend=fs_backend,  # type: ignore[arg-type]
-                system_prompt=get_system_prompt(skills_prompt),
+                system_prompt=get_system_prompt(),
                 model=llm,
+                middleware=lc_middlewares,
             )
     except Exception as e:
         console.print(f"[error]Failed to create agent: {e}[/error]")
@@ -770,14 +784,16 @@ async def main_async() -> None:
                 agent = create_deep_agent(
                     tools=custom_tools,
                     backend=fs_backend,  # type: ignore[arg-type]
-                    system_prompt=get_system_prompt(skills_prompt),
+                    system_prompt=get_system_prompt(),
+                    middleware=lc_middlewares,
                 )
             else:
                 agent = create_deep_agent(
                     tools=custom_tools,
                     backend=fs_backend,  # type: ignore[arg-type]
-                    system_prompt=get_system_prompt(skills_prompt),
+                    system_prompt=get_system_prompt(),
                     model=llm,
+                    middleware=lc_middlewares,
                 )
             continue
         

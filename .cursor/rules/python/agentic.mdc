@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+## 智能体（Agent）即相关组件（如middleware）的开发
+
+- 始终使用 >=v1.0.0 版本的 `langchain` 作为底层智能体的基础框架
+- 数据模型：
+  - 智能体或模型请求的输入和输出数据模型使用 `pydantic`（因为通常需要严格的类型校验）
+  - 数据库存储或持久化层的数据模型，根据实际所用的技术栈来具体确定，并始终使用最佳实践
+- 总是优先考虑使用协程进行异步开发，只有涉及到计算密集型的和无对应协程实现的 I/O 密集型的功能实现时，才考虑使用线程池或进程池
+
+- 在开发middleware等组件时，如果遇到不确定实现方式的情况，应该优先查看langchain的官方文档，如 "https://docs.langchain.com/oss/python/langchain/middleware/overview"

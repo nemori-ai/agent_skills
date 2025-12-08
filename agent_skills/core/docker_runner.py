@@ -1,4 +1,5 @@
 import docker
+from docker import errors as docker_errors
 import tarfile
 import io
 import time
@@ -24,6 +25,7 @@ class DockerRunner:
         self.workspace_dir = workspace_dir
         self.skills_dir = skills_dir
         self.container = None
+        self._started = False
 
     def start(self, host_workspace_path: str, host_skills_path: str):
         """
@@ -38,37 +40,82 @@ class DockerRunner:
              # Warning: Skills dir usually should exist, but we can proceed if it doesn't
              pass
 
+        # Fast path: already started and running
+        if self._started and self.container:
+            try:
+                self.container.reload()
+                if self.container.status == "running":
+                    return self.container
+            except Exception:
+                # fall through to recreate
+                pass
+
         try:
             # Check if container exists
             try:
                 self.container = self.client.containers.get(self.container_name)
+                self.container.reload()
                 if self.container.status != "running":
                     self.container.start()
-            except docker.errors.NotFound:
+            except docker_errors.NotFound:
                 # Create new container
                 self.container = self.client.containers.run(
                     self.image_name,
                     name=self.container_name,
                     detach=True,
-                    tty=True, # Keep it running
+                    tty=True,  # Keep it running
                     volumes={
-                        str(host_workspace): {'bind': self.workspace_dir, 'mode': 'rw'},
-                        str(host_skills): {'bind': self.skills_dir, 'mode': 'rw'} # Skills might need write if we allow creating skills
+                        str(host_workspace): {"bind": self.workspace_dir, "mode": "rw"},
+                        str(host_skills): {"bind": self.skills_dir, "mode": "rw"},  # Skills might need write if we allow creating skills
                     },
-                    command="tail -f /dev/null", # Keep alive
-                    entrypoint="/usr/bin/tail -f /dev/null", # Override entrypoint to prevent MCP server from starting
+                    command="tail -f /dev/null",  # Keep alive
+                    entrypoint="/usr/bin/tail -f /dev/null",  # Override entrypoint to prevent MCP server from starting
                     environment={
                         "SKILLS_WORKSPACE": self.workspace_dir,
                         "SKILLS_DIR": self.skills_dir,
-                        "PYTHONUNBUFFERED": "1"
-                    }
+                        "PYTHONUNBUFFERED": "1",
+                    },
                 )
-                
+
             # Wait a moment for container to be ready
             time.sleep(1)
-            
+            self._started = True
+            return self.container
+
         except Exception as e:
+            self._started = False
             raise RuntimeError(f"Failed to start Docker container: {e}")
+
+    def stop(self, remove: bool = False, timeout: int = 10):
+        """
+        Stop the managed container. Optionally remove it.
+        Idempotent: safe to call multiple times.
+        """
+        if not self.container:
+            self._started = False
+            return
+
+        try:
+            self.container.reload()
+            if self.container.status == "running":
+                try:
+                    self.container.stop(timeout=timeout)
+                except Exception:
+                    # best-effort stop
+                    pass
+
+            if remove:
+                try:
+                    self.container.remove(force=False)
+                    self.container = None
+                except Exception:
+                    pass
+        finally:
+            self._started = False
+
+    def close(self):
+        """Alias for stop(remove=False) to allow explicit shutdown."""
+        self.stop(remove=False)
 
     def run_command(
         self, 

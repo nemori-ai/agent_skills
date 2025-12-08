@@ -82,6 +82,11 @@ skills_write(path="output/result.txt", content="...")  # 写入工作空间
 skills_bash(command="python main.py")          # 在工作空间执行命令
 skills_bash(command="ls -la", cwd="src")       # 在子目录执行命令
 
+# 访问技能目录必须使用 skills_* 系列工具，不要使用 read_file/ls 等本地文件工具
+skills_ls(path="skills")                       # 列出技能
+skills_read(path="skills/pdf/SKILL.md")        # 阅读技能说明
+skills_run(name="pdf", command="python scripts/convert.py /workspace/file.pdf")
+
 # 绝对路径（当宿主机文件系统完全挂载时可用）
 skills_read(path="/Users/me/Documents/report.pdf")</code>
 </usage_examples>
@@ -99,6 +104,7 @@ docker run -v $HOME:$HOME agent-skills</code>
 <best_practice>
 <item>直接使用相对路径访问工作空间中的文件（如 src/main.py）</item>
 <item>使用 skills_ls() 查看工作空间内容</item>
+<item>访问 /skills/** 或技能文件一律用 skills_read/skills_ls/skills_run 等，不要用 read_file/ls/grep/glob</item>
 <item>只有在用户明确提供绝对路径时才使用绝对路径</item>
 </best_practice>
 
