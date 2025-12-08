@@ -10,7 +10,7 @@
 - **渐进式披露**: Skills 作为 MCP Resource 暴露，预加载元数据，按需读取内容
 - **双重集成方式**:
   - **MCP 协议**: 标准 MCP Server 接口，可与任何支持 MCP 的 AI 系统集成（Claude Desktop, Cursor 等）
-  - **Python Middleware**: 原生 LangChain 集成，无需 MCP 协议，更低延迟
+  - **Python Middleware**: 原生 LangChain 集成，使用官方 `AgentMiddleware` 协议，无需 MCP 协议，更低延迟
 
 ## 快速开始
 
@@ -20,7 +20,7 @@
 
 ```bash
 # 构建镜像
-docker build -t agent-skills:latest -f docker/Dockerfile .
+docker build -t agent-skills:latest -f docker_config/Dockerfile .
 
 # 运行 MCP Server
 # 方式1: 挂载项目目录到 /workspace（推荐）
@@ -87,7 +87,7 @@ python examples/demo_skills.py
 uv sync --extra demo
 
 # 构建 Docker 镜像
-docker build -t agent-skills:latest -f docker/Dockerfile .
+docker build -t agent-skills:latest -f docker_config/Dockerfile .
 
 # 运行
 python examples/demo_with_docker.py --workspace /path/to/your/project
@@ -102,7 +102,7 @@ python examples/demo_with_docker.py --workspace /path/to/your/project
 uv sync --extra deepagent
 
 # 构建 Docker 镜像
-docker build -t agent-skills:latest -f docker/Dockerfile .
+docker build -t agent-skills:latest -f docker_config/Dockerfile .
 
 # 运行（需要在 .env 中配置 ANTHROPIC_API_KEY）
 python examples/demo_deepagent.py
@@ -110,7 +110,7 @@ python examples/demo_deepagent.py
 
 ### 4. Deep Agent + Middleware Demo（推荐 ⭐）
 
-使用 **Python 原生 Middleware** 替代 MCP 协议，更低延迟，集成更简洁：
+使用 **LangChain 原生 Middleware** 替代 MCP 协议，完全符合官方 `AgentMiddleware` 协议：
 
 ```bash
 # 安装依赖
@@ -118,7 +118,7 @@ uv sync --extra deepagent
 uv pip install docker  # Middleware 需要 docker 包
 
 # 构建 Docker 镜像
-docker build -t agent-skills:latest -f docker/Dockerfile .
+docker build -t agent-skills:latest -f docker_config/Dockerfile .
 
 # 运行
 python examples/demo_middleware.py
@@ -128,7 +128,7 @@ python examples/demo_middleware.py
 
 | 特性 | MCP (demo_deepagent.py) | Middleware (demo_middleware.py) |
 |------|------------------------|--------------------------------|
-| 协议 | JSON-RPC over stdio | Python 原生调用 |
+| 协议 | JSON-RPC over stdio | LangChain AgentMiddleware |
 | 延迟 | 较高（进程间通信） | 较低（直接 docker exec） |
 | 依赖 | langchain-mcp-adapters | docker (Python SDK) |
 | 适用场景 | Claude Desktop, Cursor | LangChain/LangGraph 应用 |
@@ -211,43 +211,81 @@ skills_run(name="pdf-tools", command="python scripts/extract.py /Users/me/doc.pd
 5. Agent 读取结果返回给用户
 ```
 
-## Python Middleware 集成
+## Python Middleware 集成（LangChain 原生）
 
-对于 LangChain/LangGraph 应用，可以使用 `DockerSkillsMiddleware` 直接集成，无需 MCP 协议：
+对于 LangChain/LangGraph 应用，使用 `DockerSkillsMiddleware` 直接集成，完全符合 [LangChain AgentMiddleware 协议](https://reference.langchain.com/python/langchain/middleware/)：
+
+### 推荐方式：使用 `get_middlewares()`
 
 ```python
 from agent_skills.core.middleware import DockerSkillsMiddleware
+from deepagents import create_deep_agent
 
-# 初始化 Middleware（自动启动 Docker 容器）
+# 初始化 Middleware 工厂
+middleware_factory = DockerSkillsMiddleware(
+    workspace_dir="/path/to/workspace",
+    skills_dir="/path/to/skills",
+)
+
+# 获取所有 LangChain 原生 middleware
+# 返回 3 个 middleware：
+#   1. @before_agent - 启动 Docker 容器
+#   2. @dynamic_prompt - 动态注入技能系统提示词
+#   3. @before_model(tools=[...]) - 注入 skills_* 工具
+lc_middlewares = middleware_factory.get_middlewares()
+
+# 创建 Agent - 工具和提示词通过 middleware 自动注入
+agent = create_deep_agent(
+    tools=other_tools,  # 只需传入非技能工具（如 internet_search）
+    system_prompt="You are a helpful assistant.",  # 基础提示词
+    middleware=lc_middlewares,  # 技能系统通过 middleware 注入
+)
+```
+
+### 使用的 LangChain 官方装饰器
+
+| 装饰器 | 用途 | 说明 |
+|--------|------|------|
+| `@before_agent` | 生命周期管理 | 在 Agent 执行前启动 Docker 容器（幂等） |
+| `@dynamic_prompt` | 动态提示词注入 | 每次模型调用前注入技能指南 + 可用技能列表 |
+| `@before_model(tools=[...])` | 工具注入 | 注入 6 个 `skills_*` 工具 |
+
+### 备选方式：手动获取工具和提示词
+
+如果需要更细粒度的控制，也可以手动获取：
+
+```python
+from agent_skills.core.middleware import DockerSkillsMiddleware
+from deepagents import create_deep_agent
+
 middleware = DockerSkillsMiddleware(
     workspace_dir="/path/to/workspace",
     skills_dir="/path/to/skills",
 )
 
-# 获取 LangChain 工具
+# 手动获取工具
 tools = middleware.get_tools()
 
-# 获取技能系统提示词（包含 SKILL_GUIDE_PROMPT + 可用技能列表）
+# 手动获取技能提示词
 skills_prompt = middleware.get_prompt()
 
-# 创建 LangChain Agent
-from deepagents import create_deep_agent
-
+# 手动组合
 agent = create_deep_agent(
-    tools=tools,
+    tools=tools + other_tools,
     system_prompt=f"You are a helpful assistant.\n\n{skills_prompt}",
 )
 ```
 
-**Middleware 提供的方法：**
+### Middleware 提供的方法
 
 | 方法 | 说明 |
 |------|------|
+| `get_middlewares()` | 返回 LangChain 原生 middleware 列表（推荐）|
 | `get_tools()` | 返回 6 个 `skills_*` LangChain 工具 |
 | `get_prompt()` | 返回完整技能提示词（自动发现可用技能） |
-| `process(state)` | 运行时注入提示词到 Agent State（适用于 LangGraph） |
+| `process(state)` | 运行时注入提示词到 Agent State（Legacy） |
 
-**执行位置：**
+### 执行位置
 
 | 工具 | 执行位置 | 说明 |
 |------|----------|------|
@@ -335,7 +373,7 @@ uv sync
 uv run pytest tests/ -v
 
 # 构建 Docker 镜像
-docker build -t agent-skills:latest -f docker/Dockerfile .
+docker build -t agent-skills:latest -f docker_config/Dockerfile .
 ```
 
 ## 项目结构
@@ -346,7 +384,7 @@ agent_skills/
 │   ├── core/
 │   │   ├── skill_manager.py  # Skill 发现和管理
 │   │   ├── types.py          # 类型定义
-│   │   ├── middleware.py     # LangChain Middleware 集成
+│   │   ├── middleware.py     # LangChain Middleware 集成（原生协议）
 │   │   ├── docker_runner.py  # Docker 容器管理
 │   │   └── tools_factory.py  # LangChain 工具工厂
 │   ├── mcp/
@@ -354,9 +392,8 @@ agent_skills/
 │   │   ├── tools.py          # 6 个 skills_* 工具 (MCP)
 │   │   └── prompts.py        # Skill Guide Prompt
 │   └── skills/               # 内置 skills
-├── docker/
-│   ├── Dockerfile
-│   └── .dockerignore
+├── docker_config/
+│   └── Dockerfile
 ├── examples/
 │   ├── demo_skills.py        # 本地 Demo
 │   ├── demo_with_docker.py   # Docker Demo
