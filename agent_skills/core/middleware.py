@@ -77,9 +77,15 @@ class DockerSkillsMiddleware:
     Use get_middlewares() to get all middleware instances for create_deep_agent().
     
     Example:
+        # Minimal: only skills directory (recommended when Agent has its own filesystem)
         middleware_factory = DockerSkillsMiddleware(
-            workspace_dir="/path/to/workspace",
             skills_dir="/path/to/skills",
+        )
+        
+        # With workspace: for standalone usage
+        middleware_factory = DockerSkillsMiddleware(
+            skills_dir="/path/to/skills",
+            workspace_dir="/path/to/workspace",  # Optional
         )
         
         agent = create_deep_agent(
@@ -91,24 +97,28 @@ class DockerSkillsMiddleware:
 
     def __init__(
         self, 
-        workspace_dir: str, 
-        skills_dir: Optional[str] = None
+        skills_dir: Optional[str] = None,
+        workspace_dir: Optional[str] = None,
     ):
         """
         Initialize the middleware factory.
         
         Args:
-            workspace_dir: Local path to the user's workspace (mounted to /workspace in Docker)
-            skills_dir: Local path to custom skills (mounted to /skills in Docker)
+            skills_dir: Local path to custom skills (mounted to /skills in Docker).
+                        If None, uses built-in skills directory.
+            workspace_dir: Optional local path to workspace (mounted to /workspace in Docker).
+                          If None, skills tools will only operate on /skills directory.
+                          Use this when your Agent doesn't have its own filesystem backend.
         """
         _ensure_lc_middleware()
-        
-        self.workspace_dir = Path(workspace_dir).resolve()
         
         # Default skills directory
         default_skills = Path(__file__).parent.parent / "skills"
         self.skills_dir = Path(skills_dir).resolve() if skills_dir else default_skills
         self._default_skills_dir = default_skills
+        
+        # Workspace is optional
+        self.workspace_dir: Optional[Path] = Path(workspace_dir).resolve() if workspace_dir else None
         
         # Initialize components (lazy start for runner)
         self.runner = DockerRunner()
@@ -186,7 +196,7 @@ class DockerSkillsMiddleware:
     def _create_lifecycle_middleware(self, stop_on_exit: bool) -> Any:
         """Create middleware for Docker container lifecycle management."""
         runner = self.runner
-        host_workspace = str(self.workspace_dir)
+        host_workspace = str(self.workspace_dir) if self.workspace_dir else None
         host_skills = str(self.skills_dir)
         
         if stop_on_exit:
@@ -195,7 +205,7 @@ class DockerSkillsMiddleware:
                 name = "skills_lifecycle"
                 
                 def before_agent(self, state: Any, *, runtime: Any, config: Any) -> Any:
-                    runner.start(host_workspace, host_skills)
+                    runner.start(host_skills, host_workspace)
                     return state
                 
                 def after_agent(self, state: Any, *, runtime: Any, config: Any) -> Any:
@@ -211,7 +221,7 @@ class DockerSkillsMiddleware:
             @_before_agent  # type: ignore[misc]
             def skills_lifecycle_start(state: Any, runtime: Any) -> None:
                 """Start Docker container before agent execution (idempotent)."""
-                runner.start(host_workspace, host_skills)
+                runner.start(host_skills, host_workspace)
                 return None
             
             return skills_lifecycle_start

@@ -210,7 +210,7 @@ async def main(workspace_dir: str | None = None):
     ))
 
     # MCP Connection
-    mcp_connections = {
+    mcp_connections: dict[str, Any] = {
         "agent-skills": StdioConnection(
             transport="stdio",
             command=docker_cmd,
@@ -280,7 +280,9 @@ async def main(workspace_dir: str | None = None):
                     
                     # Handle Agent Message / Thoughts
                     if "agent" in chunk or "model" in chunk:
-                        node = chunk.get("agent", chunk.get("model"))
+                        node = chunk.get("agent") or chunk.get("model")
+                        if node is None:
+                            continue
                         messages = node.get("messages", [])
                         
                         for msg in messages:

@@ -5,9 +5,11 @@ Skills are exposed as MCP Resources for progressive disclosure.
 
 Supports flexible path resolution:
 - skills/xxx         -> SKILLS_DIR/xxx (skill directories, read-write)
-- workspace/xxx      -> WORKSPACE_DIR/xxx (user's workspace, read-write)
-- ./xxx or xxx       -> WORKSPACE_DIR/xxx (relative to workspace)
+- workspace/xxx      -> WORKSPACE_DIR/xxx (user's workspace, optional)
+- ./xxx or xxx       -> default root (workspace if mounted, else skills)
 - /absolute/path     -> direct access (backwards compatible)
+
+Note: Workspace is optional. If not mounted, skills tools only operate on /skills.
 """
 
 # pyright: reportUnusedFunction=false
@@ -32,33 +34,59 @@ from agent_skills.mcp.prompts import SKILL_GUIDE_PROMPT
 # ============================================
 # Path Configuration
 # ============================================
-# Skills directory for skill packages (read-only)
+# Skills directory for skill packages (required)
 SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", "/skills"))
-# Workspace directory - user mounts their project here (read-write)
-WORKSPACE_DIR = Path(os.environ.get("SKILLS_WORKSPACE", "/workspace"))
+
+# Workspace directory - user mounts their project here (optional)
+_workspace_env = os.environ.get("SKILLS_WORKSPACE", "/workspace")
+_workspace_path = Path(_workspace_env) if _workspace_env else None
+
+def _has_workspace() -> bool:
+    """Check if workspace is configured and exists."""
+    return _workspace_path is not None and _workspace_path.exists()
+
+def _get_workspace() -> Path:
+    """Get workspace path, raising error if not configured."""
+    if not _has_workspace():
+        raise ValueError(
+            "Workspace not configured. Mount a directory to /workspace or use skills/ paths.\n"
+            "Example: docker run -v /your/project:/workspace ..."
+        )
+    return _workspace_path  # type: ignore
+
+def _get_default_root() -> Path:
+    """Get default root directory (workspace if available, else skills)."""
+    if _has_workspace():
+        return _workspace_path  # type: ignore
+    return SKILLS_DIR
 
 
-def resolve_path(path: str, allow_absolute: bool = True) -> Path:
+def resolve_path(path: str, allow_absolute: bool = True, require_workspace: bool = False) -> Path:
     """Resolve a virtual path to an actual filesystem path.
     
     Path Resolution Rules:
     1. "skills/xxx"     -> SKILLS_DIR/xxx (skill packages)
-    2. "workspace/xxx"  -> WORKSPACE_DIR/xxx (user's mounted workspace)
-    3. "./xxx" or "xxx" -> WORKSPACE_DIR/xxx (relative paths)
+    2. "workspace/xxx"  -> WORKSPACE_DIR/xxx (requires workspace mount)
+    3. "./xxx" or "xxx" -> default root (workspace if mounted, else skills)
     4. "/absolute/path" -> direct use if allow_absolute=True
     
     Args:
         path: The path to resolve
         allow_absolute: Whether to allow absolute paths (for backwards compatibility)
+        require_workspace: If True, raise error when workspace path is used but not mounted
         
     Returns:
         Resolved Path object
+        
+    Raises:
+        ValueError: If workspace is required but not mounted
     """
     path = path.strip()
+    default_root = _get_default_root()
     
     # Handle empty path
     if not path or path == "/":
-        return WORKSPACE_DIR
+        return default_root
     
     # Virtual path prefixes
     if path.startswith("skills/"):
@@ -66,30 +94,40 @@ def resolve_path(path: str, allow_absolute: bool = True) -> Path:
         return SKILLS_DIR / path[7:]  # len("skills/") = 7
     
     if path.startswith("workspace/"):
-        return WORKSPACE_DIR / path[10:]  # len("workspace/") = 10
+        if not _has_workspace():
+            if require_workspace:
+                raise ValueError(
+                    "Workspace not configured. Mount a directory to /workspace.\n"
+                    "Example: docker run -v /your/project:/workspace ..."
+                )
+            # Fall back to skills directory
+            return SKILLS_DIR / path[10:]
+        return _get_workspace() / path[10:]  # len("workspace/") = 10
     
     # Relative path (./xxx or just xxx without prefix)
     if path.startswith("./"):
-        return WORKSPACE_DIR / path[2:]
+        return default_root / path[2:]
     
     # Absolute path - check if allowed and if it exists
     if path.startswith("/"):
         if allow_absolute:
             return Path(path)
         else:
-            # Fall back to workspace for security
-            return WORKSPACE_DIR / path.lstrip("/")
+            # Fall back to default root for security
+            return default_root / path.lstrip("/")
     
-    # Default: treat as relative to workspace
-    return WORKSPACE_DIR / path
+    # Default: treat as relative to default root
+    return default_root / path
 
 
 def get_path_info() -> dict[str, str]:
     """Get information about configured paths for debugging."""
     return {
         "skills": str(SKILLS_DIR),
-        "workspace": str(WORKSPACE_DIR),
-        "workspace_exists": str(WORKSPACE_DIR.exists()),
+        "skills_exists": str(SKILLS_DIR.exists()),
+        "workspace": str(_workspace_path) if _workspace_path else "(not configured)",
+        "workspace_exists": str(_has_workspace()),
+        "default_root": str(_get_default_root()),
     }
 
 
@@ -202,8 +240,8 @@ def register_tools(
     Returns:
         Dictionary of initialized components for reference
     """
-    # Ensure workspace directory exists
-    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+    # Note: Workspace is optional - don't create it if not mounted
+    # Users can still use skills/* paths without workspace
     
     # Initialize skill manager with a simple config
     skill_manager = _create_skill_manager(skills_dirs)
@@ -318,18 +356,18 @@ def register_tools(
         """List files and directories.
 
         Virtual Paths:
-        - ""              : List workspace root (user's mounted directory)
         - "skills"        : List all available skills
         - "skills/<name>" : List files in a specific skill
-        - "workspace/xxx" : List in workspace directory
-        - "./xxx" or "xxx": Relative to workspace
+        - ""              : List default root (workspace if mounted, else skills)
+        - "workspace/xxx" : List in workspace directory (requires mount)
+        - "./xxx" or "xxx": Relative to default root
         - "/absolute"     : Direct path (if accessible)
 
         Examples:
-        - skills_ls() - list workspace (user's project root)
         - skills_ls(path="skills") - list all skills
         - skills_ls(path="skills/gcd-calculator") - list skill files
-        - skills_ls(path="src") - list src/ in workspace
+        - skills_ls() - list default root
+        - skills_ls(path="src") - list src/ in default root
         """
         actual_path = path if isinstance(path, str) else ""
         
@@ -354,16 +392,27 @@ def register_tools(
             target = skill_path / remaining if remaining else skill_path
         else:
             # Use generic path resolution
-            target = resolve_path(actual_path)
+            try:
+                target = resolve_path(actual_path)
+            except ValueError as e:
+                return f"Error: {e}"
         
         if not target.exists():
-            # Provide helpful error for empty workspace
+            # Provide helpful error
+            default_name = "workspace" if _has_workspace() else "skills"
             if actual_path == "" or actual_path == "workspace":
+                if not _has_workspace():
+                    return (
+                        f"Workspace not mounted. Using skills directory as default.\n"
+                        f"(resolved to: {target})\n\n"
+                        "To mount your project, use:\n"
+                        "  docker run -v /your/project:/workspace ...\n\n"
+                        "Or use skills/ paths directly:\n"
+                        "  skills_ls(path='skills')"
+                    )
                 return (
-                    f"Workspace directory is empty or not mounted.\n"
-                    f"(resolved to: {target})\n\n"
-                    "To mount your project, use:\n"
-                    "  docker run -v /your/project:/workspace ..."
+                    f"Workspace directory is empty or not accessible.\n"
+                    f"(resolved to: {target})"
                 )
             return f"Error: path '{actual_path}' not found (resolved to: {target})"
         
@@ -381,10 +430,11 @@ def register_tools(
                 size = item.stat().st_size
                 items.append(f"  {item.name}  ({size} bytes)")
         
+        default_name = "workspace" if _has_workspace() else "skills"
         if not items:
-            return f"Directory '{actual_path or 'workspace'}' is empty"
+            return f"Directory '{actual_path or default_name}' is empty"
         
-        return f"Contents of '{actual_path or 'workspace'}' ({len(items)} items):\n" + "\n".join(items)
+        return f"Contents of '{actual_path or default_name}' ({len(items)} items):\n" + "\n".join(items)
 
     # ============================================
     # Tool 3: skills_read - Read file content
@@ -399,14 +449,13 @@ def register_tools(
         Virtual Paths:
         - "skills/<name>/SKILL.md"        : Read skill instructions
         - "skills/<name>/scripts/xxx.py"  : Read skill script
-        - "workspace/<filename>"          : Read from workspace
-        - "./<filename>" or "<filename>"  : Relative to workspace
+        - "workspace/<filename>"          : Read from workspace (requires mount)
+        - "./<filename>" or "<filename>"  : Relative to default root
         - "/absolute/path"                : Direct path (if accessible)
 
         Examples:
         - skills_read(path="skills/gcd-calculator/SKILL.md")
-        - skills_read(path="src/main.py")  # Read from workspace
-        - skills_read(path="workspace/output/result.txt")
+        - skills_read(path="skills/pdf/scripts/convert.py")
         """
         # Handle skills/ paths specially (need skill manager for path resolution)
         if path.startswith("skills/"):
@@ -422,7 +471,10 @@ def register_tools(
             target = skill_path / remaining
         else:
             # Use generic path resolution for all other paths
-            target = resolve_path(path)
+            try:
+                target = resolve_path(path)
+            except ValueError as e:
+                return f"Error: {e}"
         
         if not target.exists():
             return f"Error: file '{path}' not found (resolved to: {target})"
@@ -453,14 +505,13 @@ def register_tools(
         
         Virtual Paths:
         - "skills/<name>/<file>"          : Write to skill directory
-        - "workspace/<filename>"          : Write to workspace
-        - "./<filename>" or "<filename>"  : Relative to workspace
+        - "workspace/<filename>"          : Write to workspace (requires mount)
+        - "./<filename>" or "<filename>"  : Relative to default root
         - "/absolute/path"                : Direct path (if writable)
 
         Examples:
         - skills_write(path="skills/my-skill/scripts/run.py", content="print('hello')")
-        - skills_write(path="output/result.txt", content="result data")
-        - skills_write(path="workspace/data.json", content="{...}")
+        - skills_write(path="skills/my-skill/data/config.json", content="{...}")
         """
         # Handle skills/ paths specially (need skill manager for path resolution)
         if path.startswith("skills/"):
@@ -476,7 +527,10 @@ def register_tools(
             target = skill_path / remaining
         else:
             # Use generic path resolution
-            target = resolve_path(path)
+            try:
+                target = resolve_path(path)
+            except ValueError as e:
+                return f"Error: {e}"
         
         try:
             # Ensure parent directory exists
@@ -574,17 +628,15 @@ def register_tools(
         For running skill scripts, use skills_run() instead.
 
         Working Directory (cwd):
-        - ""              : Workspace root (user's project, default)
+        - ""              : Default root (workspace if mounted, else skills)
         - "skills/<name>" : Inside a skill directory
-        - "workspace/xxx" : Inside workspace subdirectory
-        - "./xxx" or "xxx": Relative to workspace
+        - "workspace/xxx" : Inside workspace subdirectory (requires mount)
+        - "./xxx" or "xxx": Relative to default root
         - "/absolute"     : Direct path
 
         Examples:
-        - skills_bash(command="ls -la")  # List workspace (user's project)
-        - skills_bash(command="python main.py")  # Run in workspace
-        - skills_bash(command="grep -r 'pattern' .", cwd="src")
-        - skills_bash(command="npm install", cwd="workspace")
+        - skills_bash(command="ls -la", cwd="skills/pdf")  # List skill directory
+        - skills_bash(command="python scripts/run.py", cwd="skills/my-skill")
         """
         actual_timeout = timeout if isinstance(timeout, int) else 60
         
@@ -602,9 +654,12 @@ def register_tools(
                     return f"Error: skill '{skill_name}' not found"
             else:
                 # Use generic path resolution
-                work_dir = resolve_path(cwd)
+                try:
+                    work_dir = resolve_path(cwd)
+                except ValueError as e:
+                    return f"Error: {e}"
         else:
-            work_dir = WORKSPACE_DIR
+            work_dir = _get_default_root()
         
         if not work_dir.exists():
             try:
@@ -643,7 +698,8 @@ def register_tools(
 
     return {
         "skill_manager": skill_manager,
-        "workspace_dir": WORKSPACE_DIR,
+        "workspace_dir": _workspace_path,
+        "workspace_mounted": _has_workspace(),
         "skills_dir": SKILLS_DIR,
     }
 
@@ -664,10 +720,11 @@ def _create_skill_manager(skills_dirs: list[str] | None = None) -> SkillManager:
     if SKILLS_DIR.exists():
         skill_paths.append(SKILLS_DIR)
     
-    # Add workspace skills
-    workspace_skills = WORKSPACE_DIR / ".skills"
-    if workspace_skills.exists():
-        skill_paths.append(workspace_skills)
+    # Add workspace skills (if workspace is mounted)
+    if _has_workspace():
+        workspace_skills = _get_workspace() / ".skills"
+        if workspace_skills.exists():
+            skill_paths.append(workspace_skills)
     
     # Add user-provided directories
     if skills_dirs:

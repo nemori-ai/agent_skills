@@ -27,15 +27,21 @@ class DockerRunner:
         self.container = None
         self._started = False
 
-    def start(self, host_workspace_path: str, host_skills_path: str):
+    def start(self, host_skills_path: str, host_workspace_path: Optional[str] = None):
         """
         Start or reuse the Docker container with appropriate volume mounts.
+        
+        Args:
+            host_skills_path: Path to skills directory on host (required, mounted to /skills)
+            host_workspace_path: Optional path to workspace on host (mounted to /workspace).
+                                If None, /workspace won't be mounted.
         """
-        host_workspace = Path(host_workspace_path).resolve()
         host_skills = Path(host_skills_path).resolve()
+        host_workspace = Path(host_workspace_path).resolve() if host_workspace_path else None
         
         # Ensure directories exist
-        host_workspace.mkdir(parents=True, exist_ok=True)
+        if host_workspace:
+            host_workspace.mkdir(parents=True, exist_ok=True)
         if not host_skills.exists():
              # Warning: Skills dir usually should exist, but we can proceed if it doesn't
              pass
@@ -58,20 +64,24 @@ class DockerRunner:
                 if self.container.status != "running":
                     self.container.start()
             except docker_errors.NotFound:
+                # Build volume mounts
+                volumes = {
+                    str(host_skills): {"bind": self.skills_dir, "mode": "rw"},
+                }
+                if host_workspace:
+                    volumes[str(host_workspace)] = {"bind": self.workspace_dir, "mode": "rw"}
+                
                 # Create new container
                 self.container = self.client.containers.run(
                     self.image_name,
                     name=self.container_name,
                     detach=True,
                     tty=True,  # Keep it running
-                    volumes={
-                        str(host_workspace): {"bind": self.workspace_dir, "mode": "rw"},
-                        str(host_skills): {"bind": self.skills_dir, "mode": "rw"},  # Skills might need write if we allow creating skills
-                    },
+                    volumes=volumes,
                     command="tail -f /dev/null",  # Keep alive
                     entrypoint="/usr/bin/tail -f /dev/null",  # Override entrypoint to prevent MCP server from starting
                     environment={
-                        "SKILLS_WORKSPACE": self.workspace_dir,
+                        "SKILLS_WORKSPACE": self.workspace_dir if host_workspace else "",
                         "SKILLS_DIR": self.skills_dir,
                         "PYTHONUNBUFFERED": "1",
                     },
@@ -131,7 +141,8 @@ class DockerRunner:
         if not self.container:
             raise RuntimeError("Container not initialized. Call start() first.")
 
-        workdir = cwd if cwd else self.workspace_dir
+        # Default to skills_dir if no cwd specified (workspace may not be mounted)
+        workdir = cwd if cwd else self.skills_dir
         environment = env if env else {}
 
         # Exec run

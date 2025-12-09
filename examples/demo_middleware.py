@@ -382,17 +382,21 @@ def create_search_tool():
 
 
 def create_skills_middleware():
-    """Create the Docker Skills Middleware."""
+    """Create the Docker Skills Middleware.
+    
+    Since this demo uses DeepAgent's LocalFilesystemBackend for file operations,
+    we only need to configure the skills directory. The workspace is managed
+    by DeepAgent's built-in file tools (ls, read_file, write_file, etc.).
+    """
     try:
         console.print("🐳 Initializing Docker Skills Middleware...", style="dim")
         
-        # Ensure workspace exists
-        WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Create middleware
+        # Create middleware - only skills_dir is needed!
+        # DeepAgent has its own filesystem backend (LocalFilesystemBackend),
+        # so we don't need to configure workspace_dir here.
         middleware = DockerSkillsMiddleware(
-            workspace_dir=str(WORKSPACE_DIR),
             skills_dir=str(SKILLS_DIR),
+            # workspace_dir is optional - omit when Agent has its own filesystem
         )
         
         # Get tools from middleware
@@ -446,11 +450,12 @@ For skill-related operations, use the `skills_*` tools:
 - `skills_read(path="skills/pdf/SKILL.md")` - 读取技能文档
 - `skills_run(name="pdf", command="python scripts/convert_pdf_to_images.py input.pdf")` - 运行技能
 - `skills_create(name="my-skill", description="...", instructions="...")` - 创建新技能
-- `skills_bash(command="python script.py")` - 在 Docker 中执行命令
+- `skills_bash(command="python script.py", cwd="skills/pdf")` - 在 Docker 中执行命令
 
 **Skills 目录映射**:
-- 工作空间: `{WORKSPACE_DIR}` → Docker `/workspace`
 - 技能目录: `{SKILLS_DIR}` → Docker `/skills`
+
+**注意**: Skills 工具只操作技能目录，用户文件请使用内置文件工具。
 
 ### 4. Task Planning (Built-in `write_todos`)
 For complex tasks, use the todo system to plan and track progress.
@@ -734,18 +739,17 @@ async def main_async() -> None:
 - `glob` - 搜索文件
 - `grep` - 搜索文件内容
 
-**🐳 Skills Middleware 工具（Docker 隔离执行）：**
+**🐳 Skills Middleware 工具（Docker 隔离执行，只操作技能目录）：**
 - `skills_ls` - 列出技能/文件
-- `skills_read` - 读取文件
-- `skills_write` - 写入文件
+- `skills_read` - 读取技能文件
+- `skills_write` - 写入技能文件
 - `skills_create` - 创建新技能
 - `skills_run` - 运行技能脚本（支持 uv 依赖隔离）
-- `skills_bash` - 在 Docker 中执行命令
+- `skills_bash` - 在 Docker 技能目录中执行命令
 
 **📂 目录映射：**
-- 本地工作空间: `{WORKSPACE_DIR}`
-- Docker 工作空间: `/workspace`
-- Docker 技能目录: `/skills`
+- 本地工作空间: `{WORKSPACE_DIR}` (由 DeepAgent 管理)
+- Docker 技能目录: `{SKILLS_DIR}` → `/skills`
 
 **🧠 Deep Agent 内置：**
 - `write_todos` / `read_todos` - 任务规划

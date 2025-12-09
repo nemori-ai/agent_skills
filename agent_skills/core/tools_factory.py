@@ -27,17 +27,39 @@ def create_docker_tools(
     raise NotImplementedError("create_docker_tools is deprecated; use DockerToolFactory.get_tools().")
 
 class DockerToolFactory:
-    def __init__(self, runner: DockerRunner, skill_manager: SkillManager, host_workspace: Path, host_skills: Path):
+    def __init__(
+        self, 
+        runner: DockerRunner, 
+        skill_manager: SkillManager, 
+        host_workspace: Optional[Path],  # Now optional
+        host_skills: Path
+    ):
         self.runner = runner
         self.skill_manager = skill_manager
-        self.host_workspace = host_workspace.resolve()
+        self.host_workspace = host_workspace.resolve() if host_workspace else None
         self.host_skills = host_skills.resolve()
+        
+    @property
+    def has_workspace(self) -> bool:
+        """Check if workspace is configured."""
+        return self.host_workspace is not None
+
+    def _get_default_root(self) -> Path:
+        """Get default root directory (workspace if available, else skills)."""
+        if self.host_workspace is not None:
+            return self.host_workspace
+        return self.host_skills
 
     def resolve_host_path(self, path: str) -> Path:
         """Resolve virtual path to Host filesystem path."""
         path = path.strip()
         
-        if not path or path == "/" or path == "workspace":
+        if not path or path == "/":
+            return self._get_default_root()
+        
+        if path == "workspace":
+            if self.host_workspace is None:
+                raise ValueError("Workspace not configured. Use skills/ paths instead.")
             return self.host_workspace
 
         if path.startswith("skills/"):
@@ -56,53 +78,61 @@ class DockerToolFactory:
             return self.host_skills / path[7:]
 
         if path.startswith("workspace/"):
+            if self.host_workspace is None:
+                raise ValueError("Workspace not configured. Use skills/ paths instead.")
             return self.host_workspace / path[10:]
 
         if path.startswith("./"):
-            return self.host_workspace / path[2:]
+            return self._get_default_root() / path[2:]
 
         if path.startswith("/"):
             # If absolute, check if it falls within allowed mounts
             p = Path(path)
-            # This is tricky because the user might give a Container Absolute Path (e.g. /workspace/foo)
-            # and we need to map it to Host.
-            # If it starts with /workspace, map to host workspace
+            # Map container paths to host paths
             if str(p).startswith(WORKSPACE_MOUNT_POINT):
+                if self.host_workspace is None:
+                    raise ValueError("Workspace not configured. Use /skills paths instead.")
                 rel = str(p)[len(WORKSPACE_MOUNT_POINT):].lstrip("/")
                 return self.host_workspace / rel
             if str(p).startswith(SKILLS_MOUNT_POINT):
                 rel = str(p)[len(SKILLS_MOUNT_POINT):].lstrip("/")
                 return self.host_skills / rel
             
-            # If it's a real Host Absolute Path (user error?), allow if strictly enabled?
-            # Better to assume it's a Container Path we can't map easily if it's outside mounts.
-            # Fallback: Treat as relative to workspace to be safe?
-            # Or just return it if we trust the user knows what they are doing locally.
-            # Let's default to blocking unknown absolute paths or mapping them to workspace.
-            return self.host_workspace / path.lstrip("/")
+            # Unknown absolute path - map to default root
+            return self._get_default_root() / path.lstrip("/")
 
-        return self.host_workspace / path
+        return self._get_default_root() / path
 
     def resolve_container_path(self, path: str) -> str:
         """Resolve virtual path to Container filesystem path."""
         path = path.strip()
         
-        if not path or path == "/" or path == "workspace":
+        # Default mount: workspace if available, else skills
+        default_mount = WORKSPACE_MOUNT_POINT if self.has_workspace else SKILLS_MOUNT_POINT
+        
+        if not path or path == "/":
+            return default_mount
+        
+        if path == "workspace":
+            if not self.has_workspace:
+                return SKILLS_MOUNT_POINT
             return WORKSPACE_MOUNT_POINT
 
         if path.startswith("skills/"):
             return f"{SKILLS_MOUNT_POINT}/{path[7:]}"
 
         if path.startswith("workspace/"):
+            if not self.has_workspace:
+                return f"{SKILLS_MOUNT_POINT}/{path[10:]}"
             return f"{WORKSPACE_MOUNT_POINT}/{path[10:]}"
 
         if path.startswith("./"):
-            return f"{WORKSPACE_MOUNT_POINT}/{path[2:]}"
+            return f"{default_mount}/{path[2:]}"
         
         if path.startswith("/"):
             return path # Absolute path in container
 
-        return f"{WORKSPACE_MOUNT_POINT}/{path}"
+        return f"{default_mount}/{path}"
 
     def get_tools(self) -> List[BaseTool]:
         
@@ -110,9 +140,9 @@ class DockerToolFactory:
         def skills_ls(path: str = "") -> str:
             """List files and directories.
             Virtual Paths:
-            - "" or "workspace": List workspace root
             - "skills": List all available skills
             - "skills/<name>": List files in a specific skill
+            - "" or "workspace": List workspace root (if configured)
             """
             # Special case: list skills
             if path.strip() == "skills":
@@ -124,7 +154,10 @@ class DockerToolFactory:
                     lines.append(f"  {skill.name}/  - {skill.description}")
                 return f"Skills ({len(skills)}):\n" + "\n".join(lines)
 
-            target = self.resolve_host_path(path)
+            try:
+                target = self.resolve_host_path(path)
+            except ValueError as e:
+                return f"Error: {e}"
             
             if not target.exists():
                 return f"Error: path '{path}' not found (resolved to: {target})"
@@ -145,15 +178,19 @@ class DockerToolFactory:
             except Exception as e:
                  return f"Error listing directory: {e}"
 
+            default_name = "workspace" if self.has_workspace else "skills"
             if not items:
-                return f"Directory '{path or 'workspace'}' is empty"
+                return f"Directory '{path or default_name}' is empty"
             
-            return f"Contents of '{path or 'workspace'}' ({len(items)} items):\n" + "\n".join(items)
+            return f"Contents of '{path or default_name}' ({len(items)} items):\n" + "\n".join(items)
 
         @tool
         def skills_read(path: str) -> str:
             """Read file content (text files only)."""
-            target = self.resolve_host_path(path)
+            try:
+                target = self.resolve_host_path(path)
+            except ValueError as e:
+                return f"Error: {e}"
             
             if not target.exists():
                 return f"Error: file '{path}' not found"
@@ -169,7 +206,10 @@ class DockerToolFactory:
         @tool
         def skills_write(path: str, content: str) -> str:
             """Write or modify a file."""
-            target = self.resolve_host_path(path)
+            try:
+                target = self.resolve_host_path(path)
+            except ValueError as e:
+                return f"Error: {e}"
             
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,10 @@ from agent_skills.core.types import SkillInfo, ToolResult, ToolStatus
 
 # Skill file name constants
 SKILL_FILE_NAME = "SKILL.md"
+
+# Built-in meta skills that should be auto-copied to user directories
+# These are essential skills that teach agents how to use the skill system
+BUILTIN_META_SKILLS = ["skill-creator"]
 
 # Default pyproject.toml template for skill scripts
 PYPROJECT_TOML_TEMPLATE = '''[project]
@@ -45,6 +50,7 @@ class SkillManager:
         self,
         skills_dirs: list[Path] | None = None,
         builtin_skills_dir: Path | None = None,
+        auto_copy_meta_skills: bool = True,
     ) -> None:
         """
         Initialize SkillManager.
@@ -52,6 +58,8 @@ class SkillManager:
         Args:
             skills_dirs: List of directories to search for skills (prioritized over builtin)
             builtin_skills_dir: Built-in skills directory (default: agent_skills/skills/)
+            auto_copy_meta_skills: Whether to auto-copy built-in meta skills (like skill-creator) 
+                                   to user directories if they don't exist
         """
         # Default skills directories
         self._skills_dirs: list[Path] = []
@@ -66,11 +74,46 @@ class SkillManager:
             for dir_path in skills_dirs:
                 if dir_path.exists() and dir_path.is_dir():
                     self._skills_dirs.append(dir_path)
+            
+            # Auto-copy built-in meta skills to the first user directory
+            if auto_copy_meta_skills and skills_dirs:
+                self._ensure_meta_skills(skills_dirs[0])
 
         # Add built-in skills directory LAST (lower priority)
         # This allows builtin skills to be overridden by external ones
         if self._builtin_skills_dir.exists():
             self._skills_dirs.append(self._builtin_skills_dir)
+
+    def _ensure_meta_skills(self, target_dir: Path) -> None:
+        """
+        Ensure built-in meta skills exist in the target directory.
+        
+        This copies essential skills like 'skill-creator' to user directories
+        so they remain accessible even when using custom skills directories.
+        
+        Args:
+            target_dir: The user's skills directory to copy meta skills into
+        """
+        if not self._builtin_skills_dir.exists():
+            return
+        
+        for skill_name in BUILTIN_META_SKILLS:
+            source_skill = self._builtin_skills_dir / skill_name
+            target_skill = target_dir / skill_name
+            
+            # Skip if source doesn't exist or target already exists
+            if not source_skill.exists():
+                continue
+            if target_skill.exists():
+                continue
+            
+            # Copy the entire skill directory
+            try:
+                shutil.copytree(source_skill, target_skill)
+            except Exception:
+                # Silently ignore copy failures (e.g., permission issues)
+                # The builtin directory will still be searched as fallback
+                pass
 
     def discover_skills(self) -> list[SkillInfo]:
         """
