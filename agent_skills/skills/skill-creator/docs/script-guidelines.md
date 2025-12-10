@@ -117,28 +117,83 @@ managed = true
 
 ---
 
-## 文件路径处理
+## ⚠️ 文件路径处理（非常重要）
+
+### 路径规范
+
+| 路径 | 用途 | 示例 |
+|------|------|------|
+| `/skills/` | **只存放技能代码** | `/skills/my-skill/scripts/main.py` |
+| 绝对路径 | **用户文件（由调用者指定）** | `/Users/xxx/Desktop/output.pdf` |
+
+### 核心规则
+
+1. **脚本应接受输入/输出路径作为命令行参数**
+2. **不要硬编码输出路径，由调用者决定**
+3. **技能目录只包含代码、文档和模板**
+
+### 为什么这样设计？
+
+- 技能目录会被多个用户/会话共享
+- 将输出文件保存到技能目录会污染技能代码
+- 调用者知道文件应该保存到哪里
 
 ### 输入文件
 
 脚本运行时，工作目录是技能目录（如 `/skills/my-skill/`）。
 
-处理用户工作空间文件时，使用 `/workspace/` 前缀：
-
 ```python
-# 用户文件在 /workspace/ 下
-input_path = "/workspace/data.json"
+# ✅ 正确：通过参数接收外部文件路径
+input_path = args.input  # 如 "/Users/xxx/data.json"
 
-# 技能内部文件使用相对路径
+# ✅ 正确：技能内部模板使用相对路径
 template_path = "data/template.md"
 ```
 
 ### 输出文件
 
-推荐输出到 `/workspace/`，便于用户访问：
+**通过参数接收**输出路径：
 
 ```python
-output_path = "/workspace/output/result.txt"
+# ✅ 正确：由调用者指定输出位置
+output_path = args.output  # 如 "/Users/xxx/Desktop/result.txt"
+
+# ❌ 错误：不要硬编码路径
+# output_path = "result.txt"  # 会保存到技能目录！
+```
+
+### 在脚本中处理路径
+
+```python
+import argparse
+from pathlib import Path
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", help="输入文件路径")
+    parser.add_argument("-o", "--output", required=True, 
+                        help="输出文件路径")
+    args = parser.parse_args()
+    
+    # 直接使用调用者提供的路径
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+    
+    # 确保输出目录存在
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # ... 处理逻辑
+```
+
+### 在 SKILL.md 中的示例
+
+```python
+# ✅ 正确示例：使用绝对路径
+skills_run(name="pdf-converter", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
+
+# ❌ 错误示例：使用相对路径
+skills_run(name="pdf-converter", command="python scripts/convert.py input.pdf -o output.pdf")
+# 文件会被保存到 /skills/pdf-converter/output.pdf（污染技能目录！）
 ```
 
 ---

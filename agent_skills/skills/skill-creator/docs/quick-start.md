@@ -113,6 +113,9 @@ my-analyzer/
 skills_run(name="my-analyzer", command="python scripts/analyze.py /workspace/sample.json")
 ```
 
+> ⚠️ **路径规范**：输入/输出文件应使用 `/workspace/` 前缀，不要将用户文件保存到技能目录！
+> 详见 [脚本编写规范](script-guidelines.md)。
+
 ### 常见问题
 
 | 问题 | 解决方案 |
@@ -120,6 +123,7 @@ skills_run(name="my-analyzer", command="python scripts/analyze.py /workspace/sam
 | 依赖缺失 | 编辑 `scripts/pyproject.toml` 添加依赖 |
 | 脚本执行失败 | 检查路径、参数是否正确 |
 | 权限问题 | 确保脚本有执行权限 |
+| 文件保存到技能目录 | 使用 `/workspace/` 前缀作为输出路径 |
 
 ---
 

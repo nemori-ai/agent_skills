@@ -1,38 +1,28 @@
-"""终极版 Docker Skills Demo (Interactive)
+"""Docker Skills Demo (Interactive)
 
-这是一个通用的交互式 Agent Demo，展示了 Agent Skills 的完整能力。
-它与 demo_skills.py 的主要区别在于：
+这是一个交互式 Agent Demo，展示了 Agent Skills 的完整能力。
+
+## 特点
 1. **Docker 运行**: 自动启动 Docker 容器运行 MCP Server
-2. **工作空间挂载**: 用户项目目录挂载到 /workspace
+2. **宿主机目录挂载**: 挂载 /Users (macOS) 或 /home (Linux)，脚本可访问任意文件
 
 ## 使用方式
 
-### 挂载项目目录（推荐）
-    python examples/demo_with_docker.py --workspace /path/to/your/project
-    python examples/demo_with_docker.py -w ~/my-project
+    python examples/demo_docker_mcp.py
     
-    Agent 可以直接访问：
-    - "列出工作空间的文件"
-    - "读取 src/main.py"
-    - "运行 python main.py"
-
-### 挂载整个用户目录（完全访问，向后兼容）
-    python examples/demo_with_docker.py
-    
-    可以使用绝对路径：
-    - "读取 /Users/me/Desktop/test.txt"
+    Agent 可以：
+    - 使用 skills_ls(path="skills") 列出技能
+    - 使用 skills_run 处理任意文件（通过绝对路径）
 
 ## 示例对话
 - "查看 skills 目录下有哪些技能"
-- "列出工作空间的文件"
 - "帮我创建一个新技能叫 hello-world"
+- "用 pdf 技能将 /Users/xxx/doc.pdf 转换为 markdown"
 
 Usage:
-    python examples/demo_with_docker.py
-    python examples/demo_with_docker.py --workspace /path/to/project
+    python examples/demo_docker_mcp.py
 """
 
-import argparse
 import asyncio
 import json
 import logging
@@ -91,32 +81,27 @@ USER_HOME = Path.home()
 BASE_SYSTEM_PROMPT = """
 You are a generic AI assistant powered by Dockerized Agent Skills.
 
-# 文件访问方式
+# 工具权限
 
-你运行在 Docker 容器中，有两个主要目录：
-- `/skills` - 技能目录（可读写，用于创建和修改技能）
-- `/workspace` - 工作空间（用户挂载的项目目录）
+管理工具（skills_ls, skills_read, skills_write, skills_bash, skills_create）只能操作 /skills 目录。
+如需访问外部文件，使用 skills_run 并在命令参数中传递绝对路径。
 
 ## 路径使用方式
 
-1. **工作空间文件**（用户项目）：直接使用相对路径
-   - `skills_ls()` - 列出工作空间
-   - `skills_read(path="src/main.py")` - 读取文件
-   - `skills_bash(command="python main.py")` - 执行命令
-
-2. **技能目录**：使用 `skills/` 前缀
+1. **技能目录**：使用 `skills/` 前缀
    - `skills_ls(path="skills")` - 列出技能
    - `skills_read(path="skills/my-skill/SKILL.md")` - 读取技能
 
-3. **绝对路径**（如果用户挂载了完整文件系统）：直接使用
+2. **外部文件**：通过 skills_run 使用绝对路径
+   - `skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/doc.pdf -o /Users/xxx/doc.md")`
 
 # Available Tools
-- `skills_bash`: Execute shell commands
-- `skills_ls`: List files
-- `skills_read`: Read files
-- `skills_write`: Write files
+- `skills_ls`: List files in /skills directory
+- `skills_read`: Read files from /skills directory
+- `skills_write`: Write files to /skills directory
+- `skills_bash`: Execute shell commands in /skills directory
 - `skills_create`: Create new skills
-- `skills_run`: Run skill scripts
+- `skills_run`: Run skill scripts (can access external files via command args)
 
 # Guidelines
 1. Use `skills_ls()` to see workspace contents (user's project).
@@ -155,7 +140,7 @@ def print_streaming_text(text: str) -> None:
     sys.stdout.write(text)
     sys.stdout.flush()
 
-async def main(workspace_dir: str | None = None):
+async def main():
     if not os.getenv("OPENAI_API_KEY"):
         console.print("[error]Error: OPENAI_API_KEY not set![/error]")
         return
@@ -166,40 +151,16 @@ async def main(workspace_dir: str | None = None):
         "run", "-i", "--rm",
         # Force uv to use the container's venv, not the mounted host venv
         "-e", "UV_PROJECT_ENVIRONMENT=/app/.venv",
-    ]
-    
-    # Determine mount strategy
-    if workspace_dir:
-        # Mode: Mount specific directory to /workspace (recommended)
-        workspace_path = Path(workspace_dir).resolve()
-        if not workspace_path.exists():
-            console.print(f"[error]Error: Directory '{workspace_dir}' does not exist![/error]")
-            return
-        
-        docker_args.extend([
-            # Mount user's project to /workspace
-            "-v", f"{workspace_path}:/workspace",
-        ])
-        mount_info = f"📂 Workspace: {workspace_path} → /workspace"
-        access_tip = "💡 Access files directly: skills_ls(), skills_read('src/main.py')"
-    else:
-        # Mode: Mount entire home directory (full access, backwards compatible)
-        docker_args.extend([
-            # Mount User Home -> User Home (The Magic)
-            "-v", f"{USER_HOME}:{USER_HOME}",
-            # Also set workspace to home for convenience
-            "-e", f"SKILLS_WORKSPACE={USER_HOME}",
-        ])
-        mount_info = f"📂 Full Access: {USER_HOME}"
-        access_tip = "💡 Use absolute paths or relative to home"
-    
-    # Common mounts
-    docker_args.extend([
-        # Mount Skills (read-write to allow creating/modifying skills)
+        # Mount Skills directory
         "-v", f"{PROJECT_ROOT}/agent_skills/skills:/skills",
+        # Mount host directory for external file access
+        "-v", f"{USER_HOME}:{USER_HOME}",
         # Image
         "agent-skills:latest"
-    ])
+    ]
+    
+    mount_info = f"📂 Skills: {PROJECT_ROOT}/agent_skills/skills → /skills"
+    access_tip = f"💡 Host mount: {USER_HOME} → {USER_HOME} (for external file access)"
 
     console.print(Panel.fit(
         "[bold]🚀 Agent Skills Docker Interactive Demo[/bold]\n\n"
@@ -339,31 +300,5 @@ async def main(workspace_dir: str | None = None):
         if "docker" in str(e).lower():
             console.print("[warning]Make sure Docker is running and the image 'agent-skills:latest' is built.[/warning]")
 
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Agent Skills Docker Interactive Demo",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Mount specific project directory to /workspace (recommended)
-  python examples/demo_with_docker.py --workspace /path/to/your/project
-  python examples/demo_with_docker.py -w ~/my-project
-  
-  # Full host access (mount entire home directory)
-  python examples/demo_with_docker.py
-"""
-    )
-    parser.add_argument(
-        "-w", "--workspace",
-        type=str,
-        default=None,
-        help="Path to mount as /workspace (your project directory). "
-             "If not specified, mounts entire home directory for full access."
-    )
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    args = parse_args()
-    asyncio.run(main(workspace_dir=args.workspace))
+    asyncio.run(main())

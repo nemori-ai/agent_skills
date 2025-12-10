@@ -230,6 +230,36 @@ class DockerToolFactory:
                 return f"Error: {result.message}"
             return json.dumps(result.data, indent=2, ensure_ascii=False)
 
+        def _check_output_path_warning(command: str) -> str:
+            """Check if command has output path not in /workspace/ and return warning."""
+            import shlex
+            warnings = []
+            
+            try:
+                parts = shlex.split(command)
+                for i, part in enumerate(parts):
+                    # Check for -o or --output flags
+                    if part in ("-o", "--output") and i + 1 < len(parts):
+                        output_path = parts[i + 1]
+                        if not output_path.startswith("/workspace"):
+                            warnings.append(
+                                f"⚠️ WARNING: Output path '{output_path}' is not in /workspace/. "
+                                f"Files should be saved to /workspace/ to keep skills directory clean. "
+                                f"Consider using: -o /workspace/{output_path.lstrip('/')}"
+                            )
+                    # Check for combined format like -o=path or --output=path
+                    elif part.startswith("-o=") or part.startswith("--output="):
+                        output_path = part.split("=", 1)[1]
+                        if not output_path.startswith("/workspace"):
+                            warnings.append(
+                                f"⚠️ WARNING: Output path '{output_path}' is not in /workspace/. "
+                                f"Files should be saved to /workspace/ to keep skills directory clean."
+                            )
+            except Exception:
+                pass  # Ignore parsing errors
+            
+            return "\n".join(warnings)
+
         @tool
         def skills_run(name: str, command: str, timeout: int = 120) -> str:
             """Run a command inside a skill directory."""
@@ -238,6 +268,9 @@ class DockerToolFactory:
             # Verify skill exists (using Local Manager)
             if not self.skill_manager.find_skill(name):
                  return f"Error: skill '{name}' not found"
+            
+            # Check for output path warnings
+            path_warning = _check_output_path_warning(command)
             
             # 2. Check for pyproject.toml (Need to check on HOST or inside CONTAINER?)
             # Checking on Host is faster.
@@ -269,6 +302,9 @@ class DockerToolFactory:
                 
                 if code != 0:
                     return f"Exit code: {code}\n{output}"
+                # Prepend warning if exists
+                if path_warning:
+                    return f"{path_warning}\n\n{output}"
                 return output
 
             else:
@@ -276,7 +312,10 @@ class DockerToolFactory:
                 output, code = self.runner.run_command(command, cwd=skill_path_container, timeout=timeout)
                 if code != 0:
                     return f"Exit code: {code}\n{output}"
-                return output
+                # Prepend warning if exists
+                if path_warning:
+                    return f"{path_warning}\n\n{output}"
+                return output if output else "(no output)"
 
         @tool
         def skills_bash(command: str, cwd: str = "", timeout: int = 60) -> str:

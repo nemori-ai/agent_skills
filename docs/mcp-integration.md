@@ -73,29 +73,7 @@ Cursor 通过 `~/.cursor/mcp.json` 配置 MCP 服务器。
 - 无需 Docker，适合开发调试
 - Skills 目录使用项目内置的 `agent_skills/skills/`
 
-### 配置示例 2：本地运行 + 自定义 workspace
-
-如果需要 skills 处理外部文件（如 PDF 转换），添加 `SKILLS_WORKSPACE` 环境变量：
-
-```json
-{
-  "mcpServers": {
-    "agent-skills": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory", "/path/to/agent_skills",
-        "agent-skills-server"
-      ],
-      "env": {
-        "SKILLS_WORKSPACE": "/path/to/your/project"
-      }
-    }
-  }
-}
-```
-
-### 配置示例 3：Docker 运行
+### 配置示例 2：Docker 运行（推荐）
 
 ```json
 {
@@ -105,13 +83,19 @@ Cursor 通过 `~/.cursor/mcp.json` 配置 MCP 服务器。
       "args": [
         "run", "-i", "--rm",
         "-v", "~/.agent-skills/skills:/skills",
-        "-v", "/path/to/project:/workspace",
+        "-v", "/Users:/Users",
         "agent-skills:latest"
       ]
     }
   }
 }
 ```
+
+两个挂载的作用：
+- `~/.agent-skills/skills:/skills` - skills 目录（必需）
+- `/Users:/Users` - 宿主机文件访问（可选，用于脚本读写外部文件）
+
+> 💡 Linux 系统请将 `/Users:/Users` 改为 `/home:/home`
 
 ### 配置后生效
 
@@ -132,7 +116,7 @@ Claude Desktop 通过 `claude_desktop_config.json` 配置 MCP。
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-### 配置示例 1：只挂载技能目录
+### 配置示例 1：只挂载技能目录（纯技能管理）
 
 ```json
 {
@@ -147,7 +131,7 @@ Claude Desktop 通过 `claude_desktop_config.json` 配置 MCP。
 }
 ```
 
-### 配置示例 2：同时挂载项目目录
+### 配置示例 2：挂载宿主机目录（脚本可访问外部文件）
 
 ```json
 {
@@ -155,13 +139,17 @@ Claude Desktop 通过 `claude_desktop_config.json` 配置 MCP。
     "agent-skills": {
       "command": "docker",
       "args": ["run", "-i", "--rm",
-               "-v", "/path/to/my-project:/workspace",
                "-v", "~/.agent-skills/skills:/skills",
+               "-v", "/Users:/Users",
                "agent-skills:latest"]
     }
   }
 }
 ```
+
+两个挂载的作用：
+- `~/.agent-skills/skills:/skills` - skills 目录（必需）
+- `/Users:/Users` - 宿主机文件访问（可选，用于脚本读写外部文件）
 
 ### Windows 路径示例
 
@@ -171,8 +159,8 @@ Claude Desktop 通过 `claude_desktop_config.json` 配置 MCP。
     "agent-skills": {
       "command": "docker",
       "args": ["run", "-i", "--rm",
-               "-v", "C:\\Users\\me\\project:/workspace",
                "-v", "C:\\Users\\me\\.agent-skills\\skills:/skills",
+               "-v", "C:\\Users:/Users",
                "agent-skills:latest"]
     }
   }
@@ -215,35 +203,36 @@ Docker 容器内预装：
 
 ---
 
-## 为什么需要 Workspace 挂载？
+## 为什么需要宿主机目录挂载？
 
 ### 场景分析
 
-| 场景 | 是否需要 Workspace | 原因 |
-|------|-------------------|------|
+| 场景 | 是否需要挂载宿主机目录 | 原因 |
+|------|----------------------|------|
 | 使用 `gcd-calculator` 计算最大公约数 | ❌ 不需要 | 纯计算，无文件操作 |
 | 使用 `pdf` 技能转换 PDF | ✅ 需要 | 需要访问用户的 PDF 文件 |
 | 创建新技能 | ❌ 不需要 | 技能写入 `/skills` 目录 |
-| 在技能中生成报告到用户目录 | ✅ 需要 | 输出文件到 `/workspace` |
+| 在技能中生成报告到用户目录 | ✅ 需要 | 输出文件到用户指定路径 |
 
-### Workspace 的作用
+### 宿主机挂载的作用
 
 ```
 宿主机                          Docker 容器
 ┌────────────────────┐         ┌────────────────────┐
-│ ~/my-project/      │ ──────► │ /workspace/        │
-│   ├── report.pdf   │   -v    │   ├── report.pdf   │
-│   └── data/        │         │   └── data/        │
+│ /Users/xxx/        │ ──────► │ /Users/xxx/        │
+│   ├── Desktop/     │   -v    │   ├── Desktop/     │
+│   │   └── doc.pdf  │         │   │   └── doc.pdf  │
+│   └── Documents/   │         │   └── Documents/   │
 └────────────────────┘         └────────────────────┘
 
-# skills_run 可以处理用户文件
-skills_run(name="pdf", command="python scripts/convert.py /workspace/report.pdf")
+# skills_run 使用绝对路径访问用户文件
+skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/Desktop/doc.pdf -o /Users/xxx/Desktop/doc.md")
 ```
 
-### 不挂载 Workspace 时
+### 不挂载宿主机目录时
 
-- `skills_*` 工具默认操作 `/skills` 目录
-- 无法访问用户项目文件
+- 管理工具（`skills_ls`, `skills_read` 等）只能操作 `/skills` 目录
+- `skills_run` 脚本无法访问外部文件
 - 适合纯技能管理场景
 
 ---
@@ -331,12 +320,42 @@ uv run agent-skills-server --quiet
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `SKILLS_DIR` | `/skills` | 技能目录（必需） |
-| `SKILLS_WORKSPACE` | `/workspace` | 工作目录（可选，目录不存在则不启用） |
+| `DISABLE_BUILTIN_SKILLS` | `false` | 禁用内置技能加载 |
 
-**设计理念**：`SKILLS_WORKSPACE` 是可选的。如果不配置：
-- Skills 工具只操作技能目录
-- 适合 Agent 已有自己文件系统后端的场景
-- 减少不必要的目录挂载
+### DISABLE_BUILTIN_SKILLS 详解
+
+Docker 镜像内置了多个示例技能（gcd-calculator, pdf, coprime-checker 等）。设置此变量可以控制是否加载这些内置技能：
+
+| 设置 | 内置技能（gcd-calculator, pdf 等） | skill-creator 元技能 |
+|-----|----------------------------------|---------------------|
+| 不设置（默认） | ✅ 显示在 resources 列表中 | ✅ 自动复制到用户 /skills |
+| `true` | ❌ 不显示 | ✅ 仍然自动复制到用户 /skills |
+
+**使用场景**：
+- 希望有一个干净的 skills 目录，只包含自己创建的技能
+- 但仍然需要 `skill-creator` 来指导创建新技能
+
+**配置示例**：
+
+```json
+{
+  "mcpServers": {
+    "agent-skills": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-e", "DISABLE_BUILTIN_SKILLS=true",
+               "-v", "~/.agent-skills/skills:/skills",
+               "-v", "/Users:/Users",
+               "agent-skills:latest"]
+    }
+  }
+}
+```
+
+### 设计理念
+
+- 管理工具（`skills_ls`, `skills_read` 等）只操作 `/skills` 目录
+- 外部文件访问通过 `skills_run` 的命令参数和宿主机目录挂载实现
 
 ---
 
@@ -358,9 +377,10 @@ uv run agent-skills-server --quiet
 
 ### Q: skills_run 无法访问我的文件？
 
-**A**: 需要挂载 workspace：
-- Docker 方式：添加 `-v /your/project:/workspace`
-- 本地方式：设置 `SKILLS_WORKSPACE` 环境变量
+**A**: 需要挂载宿主机目录：
+- macOS：添加 `-v /Users:/Users`
+- Linux：添加 `-v /home:/home`
+- 然后在命令中使用绝对路径，如 `skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/file.pdf")`
 
 ---
 

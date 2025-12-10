@@ -580,7 +580,7 @@ async def run_agent_with_streaming(agent: Any, user_input: str) -> str:
     
     async for event in agent.astream_events(
         state,
-        config={"recursion_limit": 50},
+        config={"recursion_limit": 200},
         version="v2",
     ):
         event_type = event.get("event", "")

@@ -82,10 +82,16 @@ class SkillsMiddleware:
             skills_dir="/path/to/skills",
         )
         
-        # With workspace: for standalone usage
+        # With host mount: for scripts that need to access external files
         middleware_factory = SkillsMiddleware(
             skills_dir="/path/to/skills",
-            workspace_dir="/path/to/workspace",  # Optional
+            host_mount="/Users:/Users",  # macOS, or "/home:/home" for Linux
+        )
+        
+        # Legacy: workspace_dir (deprecated, use host_mount instead)
+        middleware_factory = SkillsMiddleware(
+            skills_dir="/path/to/skills",
+            workspace_dir="/path/to/workspace",  # deprecated
         )
         
         agent = create_deep_agent(
@@ -99,6 +105,7 @@ class SkillsMiddleware:
         self, 
         skills_dir: Optional[str] = None,
         workspace_dir: Optional[str] = None,
+        host_mount: Optional[str] = None,
     ):
         """
         Initialize the middleware factory.
@@ -106,9 +113,11 @@ class SkillsMiddleware:
         Args:
             skills_dir: Local path to custom skills (mounted to /skills in Docker).
                         If None, uses built-in skills directory.
-            workspace_dir: Optional local path to workspace (mounted to /workspace in Docker).
-                          If None, skills tools will only operate on /skills directory.
-                          Use this when your Agent doesn't have its own filesystem backend.
+            workspace_dir: (Deprecated) Optional local path to workspace (mounted to /workspace).
+                          Use host_mount instead for more flexibility.
+            host_mount: Optional mount specification in "host_path:container_path" format.
+                       Example: "/Users:/Users" (macOS) or "/home:/home" (Linux).
+                       This allows scripts to access external files via absolute paths.
         """
         _ensure_lc_middleware()
         
@@ -117,8 +126,17 @@ class SkillsMiddleware:
         self.skills_dir = Path(skills_dir).resolve() if skills_dir else default_skills
         self._default_skills_dir = default_skills
         
-        # Workspace is optional
+        # Workspace is optional (deprecated)
         self.workspace_dir: Optional[Path] = Path(workspace_dir).resolve() if workspace_dir else None
+        
+        # Parse host_mount into extra_mounts dict
+        self.extra_mounts: Optional[Dict[str, str]] = None
+        if host_mount:
+            parts = host_mount.split(":")
+            if len(parts) == 2:
+                self.extra_mounts = {parts[0]: parts[1]}
+            else:
+                raise ValueError(f"Invalid host_mount format: '{host_mount}'. Expected 'host_path:container_path'")
         
         # Initialize components (lazy start for runner)
         self.runner = DockerRunner()
@@ -198,6 +216,7 @@ class SkillsMiddleware:
         runner = self.runner
         host_workspace = str(self.workspace_dir) if self.workspace_dir else None
         host_skills = str(self.skills_dir)
+        extra_mounts = self.extra_mounts
         
         if stop_on_exit:
             # Need both before_agent and after_agent - create a class-based middleware
@@ -205,7 +224,7 @@ class SkillsMiddleware:
                 name = "skills_lifecycle"
                 
                 def before_agent(self, state: Any, *, runtime: Any, config: Any) -> Any:
-                    runner.start(host_skills, host_workspace)
+                    runner.start(host_skills, host_workspace, extra_mounts)
                     return state
                 
                 def after_agent(self, state: Any, *, runtime: Any, config: Any) -> Any:
@@ -221,7 +240,7 @@ class SkillsMiddleware:
             @_before_agent  # type: ignore[misc]
             def skills_lifecycle_start(state: Any, runtime: Any) -> None:
                 """Start Docker container before agent execution (idempotent)."""
-                runner.start(host_skills, host_workspace)
+                runner.start(host_skills, host_workspace, extra_mounts)
                 return None
             
             return skills_lifecycle_start

@@ -81,13 +81,18 @@ docker build -t agent-skills:latest -f docker_config/Dockerfile .
       "command": "docker",
       "args": ["run", "-i", "--rm",
                "-v", "~/.agent-skills/skills:/skills",
+               "-v", "/Users:/Users",
                "agent-skills:latest"]
     }
   }
 }
 ```
 
-> 💡 如需访问和操作项目文件，添加 `-v /path/to/project:/workspace`
+两个挂载的作用：
+- `~/.agent-skills/skills:/skills` - skills 目录（必需）
+- `/Users:/Users` - 宿主机文件访问（可选，用于脚本读写外部文件）
+
+> 💡 Linux 系统请将 `/Users:/Users` 改为 `/home:/home`
 
 **方式 B：LangChain 应用（Middleware）**
 
@@ -95,10 +100,10 @@ docker build -t agent-skills:latest -f docker_config/Dockerfile .
 from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
-# 只需配置 skills_dir（Agent 有自己的文件系统后端时）
+# 配置 skills_dir 和宿主机目录挂载
 middleware = SkillsMiddleware(
     skills_dir="/path/to/skills",
-    # workspace_dir="/path/to/workspace",  # 可选
+    host_mount="/Users:/Users",  # 可选，用于脚本访问外部文件
 )
 
 agent = create_deep_agent(

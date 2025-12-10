@@ -11,18 +11,20 @@ combining the power of:
 工具分工：
 - DeepAgent 内置文件工具 (ls, read_file, write_file, edit_file, glob, grep)
   → 操作本地 examples/workspace 目录
-- Skills MCP 工具 (skills_bash, skills_run, skills_create 等)
-  → 通过 Docker 操作技能系统
+- Skills MCP 工具 (skills_ls, skills_read, skills_write, skills_create, skills_bash)
+  → 只能操作 /skills 目录
+- skills_run
+  → 可通过命令参数访问外部文件（宿主机目录已挂载）
 
 Usage:
     # 安装依赖
     uv pip install -e ".[deepagent]"
     
     # 构建 Docker 镜像
-    docker build -t agent-skills:latest -f docker/Dockerfile .
+    docker build -t agent-skills:latest -f docker_config/Dockerfile .
     
     # 运行
-    python examples/demo_deepagent.py
+    python examples/demo_deepagent_MCP.py
 
 Environment Variables:
     ANTHROPIC_API_KEY: Your Anthropic API key (默认后端)
@@ -425,18 +427,20 @@ async def create_mcp_client():
         console.print("Run: uv pip install langchain-mcp-adapters")
         return None, []
     
-    # Ensure workspace exists
+    # Ensure workspace exists for DeepAgent's filesystem backend
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
     
     # Docker command and arguments
+    # Note: We mount /Users:/Users so skills_run scripts can access external files
+    user_home = Path.home()
     docker_args = [
         "run", "-i", "--rm",
         # Force uv to use container's venv
         "-e", "UV_PROJECT_ENVIRONMENT=/app/.venv",
-        # Mount workspace
-        "-v", f"{WORKSPACE_DIR.resolve()}:/workspace",
         # Mount skills directory
         "-v", f"{SKILLS_DIR.resolve()}:/skills",
+        # Mount host directory for external file access
+        "-v", f"{user_home}:{user_home}",
         # Docker image
         "agent-skills:latest"
     ]
@@ -496,13 +500,13 @@ You have direct access to the local workspace directory:
 For skill-related operations, use the `skills_*` tools:
 - `skills_ls(path="skills")` - 列出可用技能
 - `skills_read(path="skills/pdf/SKILL.md")` - 读取技能文档
-- `skills_run(skill="pdf", script="convert_pdf_to_images.py", args=["input.pdf"])` - 运行技能
+- `skills_run(name="pdf", command="python scripts/convert.py /path/to/input.pdf -o /path/to/output.md")` - 运行技能
 - `skills_create(name="my-skill", description="...")` - 创建新技能
-- `skills_bash(command="python script.py")` - 在 Docker 中执行命令
+- `skills_bash(command="ls -la", cwd="skills/pdf")` - 在技能目录中执行命令
 
 **Skills 目录映射**:
-- 工作空间: `{WORKSPACE_DIR}` → Docker `/workspace`
 - 技能目录: `{SKILLS_DIR}` → Docker `/skills`
+- 宿主机目录已挂载，skills_run 可通过绝对路径访问外部文件
 
 ### 4. Task Planning (Built-in `write_todos`)
 For complex tasks, use the todo system to plan and track progress.

@@ -4,7 +4,7 @@ import tarfile
 import io
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 class DockerRunner:
     """
@@ -27,14 +27,21 @@ class DockerRunner:
         self.container = None
         self._started = False
 
-    def start(self, host_skills_path: str, host_workspace_path: Optional[str] = None):
+    def start(
+        self, 
+        host_skills_path: str, 
+        host_workspace_path: Optional[str] = None,
+        extra_mounts: Optional[Dict[str, str]] = None,
+    ):
         """
         Start or reuse the Docker container with appropriate volume mounts.
         
         Args:
             host_skills_path: Path to skills directory on host (required, mounted to /skills)
             host_workspace_path: Optional path to workspace on host (mounted to /workspace).
-                                If None, /workspace won't be mounted.
+                                If None, /workspace won't be mounted. (deprecated, use extra_mounts)
+            extra_mounts: Optional dict of additional mounts {host_path: container_path}.
+                         Example: {"/Users": "/Users"} to mount macOS home directory.
         """
         host_skills = Path(host_skills_path).resolve()
         host_workspace = Path(host_workspace_path).resolve() if host_workspace_path else None
@@ -70,6 +77,12 @@ class DockerRunner:
                 }
                 if host_workspace:
                     volumes[str(host_workspace)] = {"bind": self.workspace_dir, "mode": "rw"}
+                
+                # Add extra mounts (e.g., {"/Users": "/Users"})
+                if extra_mounts:
+                    for host_path, container_path in extra_mounts.items():
+                        resolved_host = str(Path(host_path).resolve())
+                        volumes[resolved_host] = {"bind": container_path, "mode": "rw"}
                 
                 # Create new container
                 self.container = self.client.containers.run(

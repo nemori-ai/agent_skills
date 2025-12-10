@@ -51,6 +51,7 @@ class SkillManager:
         skills_dirs: list[Path] | None = None,
         builtin_skills_dir: Path | None = None,
         auto_copy_meta_skills: bool = True,
+        load_builtin_skills: bool = True,
     ) -> None:
         """
         Initialize SkillManager.
@@ -60,11 +61,14 @@ class SkillManager:
             builtin_skills_dir: Built-in skills directory (default: agent_skills/skills/)
             auto_copy_meta_skills: Whether to auto-copy built-in meta skills (like skill-creator) 
                                    to user directories if they don't exist
+            load_builtin_skills: Whether to add builtin_skills_dir to search path.
+                                 If False, only meta skills are copied but other builtin skills
+                                 won't be discovered. (default: True)
         """
         # Default skills directories
         self._skills_dirs: list[Path] = []
 
-        # Set built-in skills directory for creating new skills
+        # Set built-in skills directory for creating new skills and copying meta skills
         self._builtin_skills_dir = builtin_skills_dir or (Path(__file__).parent.parent / "skills")
 
         # IMPORTANT: Add user-provided directories FIRST for priority
@@ -81,7 +85,8 @@ class SkillManager:
 
         # Add built-in skills directory LAST (lower priority)
         # This allows builtin skills to be overridden by external ones
-        if self._builtin_skills_dir.exists():
+        # Only add if load_builtin_skills is True
+        if load_builtin_skills and self._builtin_skills_dir.exists():
             self._skills_dirs.append(self._builtin_skills_dir)
 
     def _ensure_meta_skills(self, target_dir: Path) -> None:
