@@ -87,16 +87,16 @@ docker build -t agent-skills:latest -f docker_config/Dockerfile .
 }
 ```
 
-> 💡 如需访问项目文件，添加 `-v /path/to/project:/workspace`
+> 💡 如需访问和操作项目文件，添加 `-v /path/to/project:/workspace`
 
 **方式 B：LangChain 应用（Middleware）**
 
 ```python
-from agent_skills.core.middleware import DockerSkillsMiddleware
+from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
 # 只需配置 skills_dir（Agent 有自己的文件系统后端时）
-middleware = DockerSkillsMiddleware(
+middleware = SkillsMiddleware(
     skills_dir="/path/to/skills",
     # workspace_dir="/path/to/workspace",  # 可选
 )

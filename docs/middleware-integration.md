@@ -4,7 +4,7 @@
 
 ## 概述
 
-对于 LangChain/LangGraph 应用，使用 `DockerSkillsMiddleware` 直接集成，完全符合 [LangChain AgentMiddleware 协议](https://reference.langchain.com/python/langchain/middleware/)。
+对于 LangChain/LangGraph 应用，使用 `SkillsMiddleware` 直接集成，完全符合 [LangChain AgentMiddleware 协议](https://reference.langchain.com/python/langchain/middleware/)。
 
 **优势：**
 - 无需 MCP 协议，更低延迟
@@ -23,12 +23,12 @@ uv pip install docker  # Middleware 需要 docker 包
 ## 推荐方式：使用 `get_middlewares()`
 
 ```python
-from agent_skills.core.middleware import DockerSkillsMiddleware
+from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
 # 初始化 Middleware 工厂
 # 只需配置 skills_dir，workspace 由 Agent 自己的文件系统后端管理
-middleware_factory = DockerSkillsMiddleware(
+middleware_factory = SkillsMiddleware(
     skills_dir="/path/to/skills",
     # workspace_dir 是可选的，当 Agent 已有文件系统后端时不需要
 )
@@ -44,16 +44,38 @@ agent = create_deep_agent(
 )
 ```
 
-### 独立使用（Agent 没有文件系统后端）
+### 何时需要配置 `workspace_dir`？
 
-如果你的 Agent 没有自己的文件系统后端，可以同时配置 `workspace_dir`：
+`workspace_dir` 在以下两种场景需要配置：
+
+**场景 1：Agent 没有自己的文件系统后端**
 
 ```python
-middleware_factory = DockerSkillsMiddleware(
+# Agent 需要通过 skills_* 工具操作文件
+middleware_factory = SkillsMiddleware(
     skills_dir="/path/to/skills",
-    workspace_dir="/path/to/workspace",  # 挂载到 Docker /workspace
+    workspace_dir="/path/to/workspace",
 )
 ```
+
+**场景 2：skills_run 需要处理外部文件**
+
+即使 Agent 有自己的文件系统后端，如果你需要用技能脚本处理用户文件（如 PDF 转换），也需要配置 `workspace_dir`：
+
+```python
+# 用 pdf 技能处理用户的 PDF 文件
+middleware_factory = SkillsMiddleware(
+    skills_dir="/path/to/skills",
+    workspace_dir="/path/to/user/project",  # 包含用户 PDF 的目录
+)
+
+# 现在可以：
+# skills_run(name="pdf", command="python scripts/convert.py /workspace/report.pdf")
+```
+
+**不需要配置的场景：**
+- 只使用纯计算技能（如 `gcd-calculator`、`prime-list-generator`）
+- Agent 有自己的文件系统，且技能不需要处理外部文件
 
 ---
 
@@ -100,10 +122,10 @@ LLM 推理
 如果需要更细粒度的控制：
 
 ```python
-from agent_skills.core.middleware import DockerSkillsMiddleware
+from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
-middleware = DockerSkillsMiddleware(
+middleware = SkillsMiddleware(
     skills_dir="/path/to/skills",
 )
 
@@ -124,18 +146,20 @@ agent = create_deep_agent(
 
 ## API 参考
 
-### DockerSkillsMiddleware
+### SkillsMiddleware
 
 ```python
-DockerSkillsMiddleware(
+SkillsMiddleware(
     skills_dir: str = None,      # 技能目录路径（挂载到 /skills）
     workspace_dir: str = None,   # 可选：工作空间路径（挂载到 /workspace）
 )
 ```
 
 **参数说明：**
-- `skills_dir`：技能目录路径。如果为 `None`，使用内置技能目录。
-- `workspace_dir`：可选。仅当 Agent 没有自己的文件系统后端时才需要配置。配置后 `skills_*` 工具可以访问 `/workspace` 目录。
+- `skills_dir`：技能目录路径。如果为 `None`，使用内置技能目录。挂载到 Docker 容器的 `/skills`。
+- `workspace_dir`：可选。配置后挂载到 Docker 容器的 `/workspace`。需要配置的场景：
+  1. Agent 没有自己的文件系统后端，需要通过 skills_* 工具操作文件
+  2. `skills_run` 需要处理技能目录外的文件（如用 pdf 技能转换用户 PDF）
 
 ### 方法
 
@@ -153,13 +177,42 @@ DockerSkillsMiddleware(
 
 ---
 
-## 执行位置
+## 执行位置与文件访问
 
 | 工具 | 执行位置 | 说明 |
 |------|----------|------|
 | `skills_run` | Docker 容器 | 通过 `docker exec` 执行，支持 `uv` 依赖隔离 |
 | `skills_bash` | Docker 容器 | 通过 `docker exec` 执行 |
 | `skills_ls/read/write/create` | 宿主机 | 直接操作文件系统，性能更优 |
+
+### 文件访问范围
+
+**重要**：Middleware 通过 Docker 提供隔离，skills_* 工具**只能访问挂载的目录**：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Docker 容器                                                │
+│                                                             │
+│  /skills    ← 始终挂载（来自 skills_dir）                   │
+│  /workspace ← 可选挂载（来自 workspace_dir）                │
+│                                                             │
+│  ❌ 无法访问其他宿主机目录                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| 配置 | skills_* 可访问 | 典型用例 |
+|------|-----------------|----------|
+| 只配置 `skills_dir` | 仅 `/skills` | 纯计算技能，Agent 有自己的文件系统 |
+| 配置两者 | `/skills` + `/workspace` | 技能需要处理用户文件（如 PDF 转换） |
+
+**如果需要访问任意文件**：将 `workspace_dir` 设置为用户主目录：
+
+```python
+middleware = SkillsMiddleware(
+    skills_dir="/path/to/skills",
+    workspace_dir="/Users/username",  # 挂载整个用户目录
+)
+```
 
 ---
 
@@ -181,7 +234,7 @@ DockerSkillsMiddleware(
 ```python
 import asyncio
 from pathlib import Path
-from agent_skills.core.middleware import DockerSkillsMiddleware
+from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
 async def main():
@@ -190,7 +243,7 @@ async def main():
     skills.mkdir(exist_ok=True)
     
     # 初始化 Middleware（只需 skills_dir）
-    middleware = DockerSkillsMiddleware(
+    middleware = SkillsMiddleware(
         skills_dir=str(skills),
     )
     

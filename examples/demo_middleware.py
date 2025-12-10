@@ -4,12 +4,12 @@ This script demonstrates how to use Deep Agents with the Agent Skills Middleware
 combining the power of:
 - 🔍 Internet Search (Tavily)
 - 📁 Local File System (via FilesystemMiddleware with LocalFilesystemBackend)
-- 🛠️ Skills System (via DockerSkillsMiddleware - NO MCP!)
+- 🛠️ Skills System (via SkillsMiddleware - NO MCP!)
 - 📝 Task Planning (write_todos)
 - 🤖 Subagents (spawn_subagent)
 
 与 demo_deepagent.py 的区别：
-- 使用 DockerSkillsMiddleware 替代 MCP Client
+- 使用 SkillsMiddleware 替代 MCP Client
 - 更简洁的集成方式，不需要 langchain-mcp-adapters
 - Prompt 和 Tools 通过 Python 原生方式注入
 
@@ -74,7 +74,7 @@ logging.getLogger("docker").setLevel(logging.WARNING)
 # Import local modules
 sys.path.insert(0, str(PROJECT_ROOT))
 try:
-    from agent_skills.core.middleware import DockerSkillsMiddleware
+    from agent_skills.core.middleware import SkillsMiddleware
 except ImportError as e:
     print(f"Error importing agent_skills: {e}")
     print("Make sure you're running from the project root.")
@@ -381,29 +381,31 @@ def create_search_tool():
     return internet_search
 
 
-def create_skills_middleware():
-    """Create the Docker Skills Middleware.
+def create_skills_middleware() -> SkillsMiddleware | None:
+    """Create the Skills Middleware.
     
     Since this demo uses DeepAgent's LocalFilesystemBackend for file operations,
     we only need to configure the skills directory. The workspace is managed
     by DeepAgent's built-in file tools (ls, read_file, write_file, etc.).
+    
+    Returns:
+        SkillsMiddleware instance, or None if initialization fails.
+        Tools are automatically injected via get_middlewares().
     """
     try:
-        console.print("🐳 Initializing Docker Skills Middleware...", style="dim")
+        console.print("🐳 Initializing Skills Middleware...", style="dim")
         
         # Create middleware - only skills_dir is needed!
         # DeepAgent has its own filesystem backend (LocalFilesystemBackend),
         # so we don't need to configure workspace_dir here.
-        middleware = DockerSkillsMiddleware(
+        middleware = SkillsMiddleware(
             skills_dir=str(SKILLS_DIR),
             # workspace_dir is optional - omit when Agent has its own filesystem
         )
         
-        # Get tools from middleware
-        tools = middleware.get_tools()
-        
-        console.print(f"[success]✓ Skills Middleware initialized ({len(tools)} tools available)[/success]")
-        return middleware, tools
+        tools_count = len(middleware.get_tools())
+        console.print(f"[success]✓ Skills Middleware initialized ({tools_count} tools available)[/success]")
+        return middleware
         
     except Exception as e:
         console.print(f"[error]Failed to initialize Skills Middleware: {e}[/error]")
@@ -411,7 +413,7 @@ def create_skills_middleware():
         console.print("[info]Build with: docker build -t agent-skills:latest -f docker_config/Dockerfile .[/info]")
         import traceback
         console.print(traceback.format_exc(), style="dim red")
-        return None, []
+        return None
 
 
 # ============================================================================
@@ -485,7 +487,7 @@ def print_welcome() -> None:
 ║  This agent combines:                                             ║
 ║  • 🔍 Internet Search (Tavily)                                    ║
 ║  • 📁 Local File System (FilesystemMiddleware)                    ║
-║  • 🐳 Skills System (DockerSkillsMiddleware)                      ║
+║  • 🐳 Skills System (SkillsMiddleware)                      ║
 ║  • 📝 Task Planning (write_todos)                                 ║
 ║                                                                   ║
 ║  Workspace: {str(WORKSPACE_DIR):<43} ║
@@ -664,7 +666,7 @@ async def main_async() -> None:
         custom_tools.append(search_tool)
     
     # Initialize Skills Middleware (replaces MCP client)
-    middleware, _skills_tools = create_skills_middleware()
+    middleware = create_skills_middleware()
     
     # 使用 LangChain 原生 middleware 方式注入（无需手动添加工具和提示词）
     lc_middlewares: list[Any] = []
@@ -756,7 +758,7 @@ async def main_async() -> None:
 - `task` - 子智能体委托
 
 **💡 Middleware vs MCP：**
-- 本 Demo 使用 **DockerSkillsMiddleware**（Python 原生）
+- 本 Demo 使用 **SkillsMiddleware**（Python 原生）
 - 对比 demo_deepagent.py 使用 MCP Client（JSON-RPC 协议）
 - Middleware 方式延迟更低，集成更简洁
 """),

@@ -141,7 +141,7 @@ python examples/demo_middleware.py
 
 ### 特点
 
-- 使用 `DockerSkillsMiddleware` 原生集成
+- 使用 `SkillsMiddleware` 原生集成
 - 符合 LangChain AgentMiddleware 协议
 - 比 MCP 方式延迟更低
 - 自动注入工具和提示词

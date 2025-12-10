@@ -65,7 +65,7 @@ def _ensure_lc_middleware() -> bool:
         )
 
 
-class DockerSkillsMiddleware:
+class SkillsMiddleware:
     """
     Factory class that creates LangChain-native middleware for Agent Skills.
     
@@ -78,12 +78,12 @@ class DockerSkillsMiddleware:
     
     Example:
         # Minimal: only skills directory (recommended when Agent has its own filesystem)
-        middleware_factory = DockerSkillsMiddleware(
+        middleware_factory = SkillsMiddleware(
             skills_dir="/path/to/skills",
         )
         
         # With workspace: for standalone usage
-        middleware_factory = DockerSkillsMiddleware(
+        middleware_factory = SkillsMiddleware(
             skills_dir="/path/to/skills",
             workspace_dir="/path/to/workspace",  # Optional
         )
@@ -341,4 +341,4 @@ class DockerSkillsMiddleware:
 
 
 # Export for convenience
-__all__ = ["DockerSkillsMiddleware"]
+__all__ = ["SkillsMiddleware"]
