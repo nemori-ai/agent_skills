@@ -382,6 +382,15 @@ The Docker image includes multiple example skills (gcd-calculator, pdf, coprime-
 - Linux: Add `-v /home:/home`
 - Then use absolute paths in commands, like `skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/file.pdf")`
 
+### Q: Agent doesn't see newly added or deleted skills?
+
+**A**: The MCP Server loads the skill list at startup. When you add or delete skills, you need to restart MCP for the Agent to see the changes:
+
+- **Cursor**: Completely restart Cursor (Cmd+Q on macOS / Alt+F4 on Windows), then reopen
+- **Claude Desktop**: Close and reopen Claude Desktop application
+
+> 💡 **Note**: Modifying content within existing skills (like editing SKILL.md or scripts) usually doesn't require a restart, as skill content is read on demand. But adding new skills or deleting skills requires restarting MCP to refresh the skill list.
+
 ---
 
 ## Comparison with Middleware

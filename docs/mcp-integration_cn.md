@@ -382,6 +382,15 @@ Docker 镜像内置了多个示例技能（gcd-calculator, pdf, coprime-checker 
 - Linux：添加 `-v /home:/home`
 - 然后在命令中使用绝对路径，如 `skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/file.pdf")`
 
+### Q: Agent 看不到新添加或删除的技能？
+
+**A**: MCP Server 在启动时加载技能列表。当你添加或删除技能后，需要重启 MCP 才能让 Agent 看到变化：
+
+- **Cursor**：完全重启 Cursor（macOS 使用 Cmd+Q / Windows 使用 Alt+F4），然后重新打开
+- **Claude Desktop**：关闭并重新打开 Claude Desktop 应用
+
+> 💡 **提示**：修改已有技能的内容（如编辑 SKILL.md 或脚本）通常不需要重启，因为技能内容是按需读取的。但新增技能或删除技能需要重启 MCP 来刷新技能列表。
+
 ---
 
 ## 与 Middleware 方式对比
