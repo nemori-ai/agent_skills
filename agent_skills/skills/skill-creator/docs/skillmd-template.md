@@ -1,137 +1,136 @@
-# SKILL.md 编写模板
+# SKILL.md Writing Template
 
-SKILL.md 是技能的入口文档，告诉使用者这个技能做什么、怎么用。
+SKILL.md is the entry document for a skill, telling users what this skill does and how to use it.
 
-## 必需结构
+## Required Structure
 
-### 1. YAML Frontmatter（必需）
+### 1. YAML Frontmatter (Required)
 
-文件必须以 YAML frontmatter 开头：
+File must begin with YAML frontmatter:
 
 ```yaml
 ---
 name: skill-name
-description: 简洁的功能描述（一句话说明技能用途）
+description: Brief function description (one sentence explaining skill purpose)
 ---
 ```
 
-**字段说明**：
-- `name`：技能唯一标识，必须与目录名一致
-- `description`：显示在技能列表中的简介（建议 < 50 字）
+**Field descriptions**:
+- `name`: Skill unique identifier, must match directory name
+- `description`: Brief shown in skill list (recommended < 50 characters)
 
 ---
 
-### 2. 文档正文结构
+### 2. Document Body Structure
 
-推荐使用以下结构组织内容：
+Recommended structure for organizing content:
 
 ```markdown
-# 技能名称
+# Skill Name
 
-一两句话概述这个技能的核心功能和适用场景。
+One or two sentences summarizing the core function and applicable scenarios.
 
-## 依赖
+## Dependencies
 
 - Python 3.12+
-- 第三方库：pandas, requests（如有）
+- Third-party libraries: pandas, requests (if any)
 
-## 使用方法
+## Usage
 
-### 基本用法
+### Basic Usage
 
 ```
 skills_run(name="skill-name", command="python scripts/main.py <args>")
 ```
 
-### 参数说明
+### Parameter Description
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `<input>` | 输入文件路径 | 必需 |
-| `--output`, `-o` | 输出文件路径 | stdout |
-| `--verbose`, `-v` | 显示详细信息 | false |
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `<input>` | Input file path | Required |
+| `--output`, `-o` | Output file path | stdout |
+| `--verbose`, `-v` | Show detailed info | false |
 
-## 脚本说明
+## Script Description
 
-| 脚本 | 功能 |
-|------|------|
-| `scripts/main.py` | 主逻辑脚本 |
-| `scripts/helpers.sh` | 辅助工具（可选） |
+| Script | Function |
+|--------|----------|
+| `scripts/main.py` | Main logic script |
+| `scripts/helpers.sh` | Helper tools (optional) |
 
-## 示例
+## Examples
 
-### 输入
+### Input
 ```json
 {"name": "test", "value": 123}
 ```
 
-### 命令
+### Command
 ```
 skills_run(name="skill-name", command="python scripts/main.py input.json -o output.txt")
 ```
 
-### 输出
+### Output
 ```
-处理完成：1 条记录
+Processing complete: 1 record
 ```
 
-## 注意事项
+## Notes
 
-- 输入文件必须是有效的 JSON 格式
-- 大文件处理可能需要较长时间
-- 不支持嵌套超过 10 层的数据结构
+- Input file must be valid JSON format
+- Large file processing may take longer
+- Does not support data structures nested more than 10 levels
 ```
 
 ---
 
-## 编写要点
+## Writing Guidelines
 
-### ✅ 好的 SKILL.md
+### ✅ Good SKILL.md
 
-- **开门见山**：第一段说清楚技能做什么
-- **命令可复制**：示例命令可以直接使用
-- **参数明确**：列出所有参数及其含义
-- **有输入输出示例**：让用户知道期望结果
+- **Get to the point**: First paragraph clearly states what skill does
+- **Copyable commands**: Example commands can be used directly
+- **Clear parameters**: List all parameters and their meanings
+- **Input/output examples**: Let users know expected results
 
-### ❌ 避免的写法
+### ❌ Avoid These
 
-- 冗长的背景介绍
-- 缺少可执行的命令示例
-- 参数说明不完整
-- 没有说明依赖和限制
+- Lengthy background introductions
+- Missing executable command examples
+- Incomplete parameter descriptions
+- No mention of dependencies and limitations
 
 ---
 
-## 模板快速复制
+## Quick Copy Template
 
 ```markdown
 ---
 name: my-skill
-description: 一句话描述技能功能
+description: One sentence describing skill function
 ---
 
-# 技能名称
+# Skill Name
 
-技能的核心功能描述。
+Core function description of the skill.
 
-## 使用方法
+## Usage
 
 ```
 skills_run(name="my-skill", command="python scripts/main.py <input>")
 ```
 
-## 参数说明
+## Parameter Description
 
-- `<input>`：输入文件路径
+- `<input>`: Input file path
 
-## 示例
+## Examples
 
-输入：`data.json`
-输出：处理结果
+Input: `data.json`
+Output: Processing result
 
-## 注意事项
+## Notes
 
-- 注意事项 1
-- 注意事项 2
+- Note 1
+- Note 2
 ```
-

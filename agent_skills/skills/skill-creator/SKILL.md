@@ -1,73 +1,73 @@
 ---
 name: skill-creator
-description: 用于创建复杂技能包的元技能，包含脚本、数据和多文件结构
+description: Meta-skill for creating complex skill packages with scripts, data, and multi-file structures
 ---
 
-# 技能创建器
+# Skill Creator
 
-本技能教你如何创建**技能包 (Skill Package)**——一个包含指南、脚本和数据的完整目录结构。
+This skill teaches you how to create **Skill Packages**—complete directory structures containing guides, scripts, and data.
 
-## ⚠️ 路径规范
+## ⚠️ Path Guidelines
 
-> **规则**：脚本应接受输出路径参数，由调用者指定输出位置。技能目录只存放代码。
+> **Rule**: Scripts should accept output path parameters, letting callers specify output locations. Skill directories only store code.
 >
-> 详细说明请阅读：`skills_read(path="skills/skill-creator/docs/script-guidelines.md")`
+> For detailed guidelines: `skills_read(path="skills/skill-creator/docs/script-guidelines.md")`
 
-## 什么是技能包？
+## What is a Skill Package?
 
-技能包不仅仅是一个 Markdown 文件，而是一个完整的目录结构：
+A skill package is not just a Markdown file, but a complete directory structure:
 
 ```
 skill-name/
-├── SKILL.md          # 入口指南 (必需)
-├── scripts/          # 可执行脚本
+├── SKILL.md          # Entry guide (required)
+├── scripts/          # Executable scripts
 │   ├── main.py
-│   └── pyproject.toml  (依赖配置)
-├── data/             # 模板和数据文件
-└── docs/             # 详细文档 (可选)
+│   └── pyproject.toml  (dependency config)
+├── data/             # Templates and data files
+└── docs/             # Detailed documentation (optional)
 ```
 
 ---
 
-## 📖 按场景选择指南
+## 📖 Choose Guide by Scenario
 
-根据你的需求，阅读对应的详细文档：
+Based on your needs, read the corresponding detailed documentation:
 
-### 🆕 从零创建新技能
+### 🆕 Create New Skill from Scratch
 
-首次创建技能包，需要了解完整流程（5 步创建法）。
+First time creating a skill package, learn the complete process (5-step creation method).
 
 ```python
 skills_read(path="skills/skill-creator/docs/quick-start.md")
 ```
 
-### 📝 编写/修改 SKILL.md 文档
+### 📝 Write/Modify SKILL.md Documentation
 
-需要了解 SKILL.md 的结构和模板。
+Learn the structure and template for SKILL.md.
 
 ```python
 skills_read(path="skills/skill-creator/docs/skillmd-template.md")
 ```
 
-### 🔧 添加脚本到技能
+### 🔧 Add Scripts to Skill
 
-学习 Python/Bash 脚本编写规范、依赖管理。
+Learn Python/Bash script writing standards and dependency management.
 
 ```python
 skills_read(path="skills/skill-creator/docs/script-guidelines.md")
 ```
 
-### 🔄 脚本调试失败，需要迭代
+### 🔄 Script Debugging Failed, Need Iteration
 
-创建了替代脚本后如何正确清理旧版本。
+How to properly clean up old versions after creating replacement scripts.
 
 ```python
 skills_read(path="skills/skill-creator/docs/iteration-and-cleanup.md")
 ```
 
-### 📚 查看完整示例
+### 📚 View Complete Example
 
-参考一个完整的技能创建过程（代码审查技能）。
+Reference a complete skill creation process (code reviewer skill).
 
 ```python
 skills_read(path="skills/skill-creator/docs/full-example.md")
@@ -75,40 +75,40 @@ skills_read(path="skills/skill-creator/docs/full-example.md")
 
 ---
 
-## 命令速查
+## Command Quick Reference
 
-| 工具 | 用途 | 示例 |
-|------|------|------|
-| `skills_ls(path="skills")` | 列出所有技能 | 查看可用技能 |
-| `skills_ls(path="skills/<name>")` | 列出技能内文件 | 检查文件结构 |
-| `skills_read(path="skills/<name>/SKILL.md")` | 读取技能文档 | 学习技能用法 |
-| `skills_create(name, description, instructions)` | 创建技能骨架 | 新建技能 |
-| `skills_write(path, content)` | 添加/覆盖文件 | 添加脚本 |
-| `skills_run(name, command)` | 执行技能命令 | 测试脚本 |
-| `skills_bash(command, cwd)` | 执行 shell 命令 | 删除/重命名文件 |
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `skills_ls(path="skills")` | List all skills | View available skills |
+| `skills_ls(path="skills/<name>")` | List files in skill | Check file structure |
+| `skills_read(path="skills/<name>/SKILL.md")` | Read skill documentation | Learn skill usage |
+| `skills_create(name, description, instructions)` | Create skill skeleton | Create new skill |
+| `skills_write(path, content)` | Add/overwrite file | Add script |
+| `skills_run(name, command)` | Execute skill command | Test script |
+| `skills_bash(command, cwd)` | Execute shell command | Delete/rename file |
 
 ---
 
-## 快速开始
+## Quick Start
 
-创建一个最简单的技能只需 2 步：
+Creating the simplest skill requires only 2 steps:
 
 ```python
-# 1. 创建技能骨架
+# 1. Create skill skeleton
 skills_create(
     name="hello-world",
-    description="示例技能",
-    instructions="# Hello World\n\n运行 `skills_run(name=\"hello-world\", command=\"python scripts/hello.py\")`"
+    description="Example skill",
+    instructions="# Hello World\n\nRun `skills_run(name=\"hello-world\", command=\"python scripts/hello.py\")`"
 )
 
-# 2. 添加脚本
+# 2. Add script
 skills_write(
     path="skills/hello-world/scripts/hello.py",
     content='print("Hello, World!")'
 )
 
-# 3. 测试
+# 3. Test
 skills_run(name="hello-world", command="python scripts/hello.py")
 ```
 
-需要更详细的指导？阅读 [快速开始指南](docs/quick-start.md)。
+Need more detailed guidance? Read [Quick Start Guide](docs/quick-start.md).

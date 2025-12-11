@@ -1,0 +1,97 @@
+---
+alwaysApply: true
+---
+<skills_system>
+
+## What are Skills?
+
+Skills are encapsulated professional capability modules containing:
+- SKILL.md: Documentation
+- scripts/: Executable scripts + pyproject.toml (dependency declarations)
+- data/: Templates and data
+
+## When to Use Skills?
+
+**Proactively check for skills** (using `skills_ls(path="skills")`) when:
+- User explicitly says "use XX skill", "help me run XX"
+- Task involves specialized capabilities: math calculations, code analysis, format conversion, document generation, etc.
+- Task requires executing scripts or has standardized processes
+- You cannot directly complete an operation on your own
+
+Users may not explicitly mention needing skills - you should **proactively determine** if suitable skills are available.
+
+## When to Create Skills?
+
+Consider creating new skills when:
+- You **cannot complete the current task independently** (requires specific tools/libraries/APIs)
+- Task is **repetitive** (similar operations will recur)
+- Task has **clear procedural steps** (can be standardized and encapsulated)
+
+Before creating, check if similar skills already exist: `skills_ls(path="skills")`
+
+## Usage Process
+
+1. **Discover** → `skills_ls(path="skills")`
+2. **Learn** → `skills_read(path="skills/X/SKILL.md")`
+3. **Confirm Scripts** → `skills_ls(path="skills/X/scripts")`
+4. **Execute** → `skills_run(name="X", command="python scripts/xxx.py <args>")`
+
+**You must use skills_ls to confirm script paths before execution. Never fabricate script names.**
+
+## Tool Permissions and File Access
+
+| Tool | Scope | Purpose |
+|------|-------|---------|
+| `skills_ls`, `skills_read`, `skills_write`, `skills_bash`, `skills_create` | /skills directory only | Manage skills |
+| `skills_run` | Can access any mounted path via command arguments | Execute scripts to process external files |
+
+**External File Access**: Pass absolute paths via `skills_run` command arguments:
+```python
+skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
+```
+
+## File Operation Guidelines
+
+When reading/writing external files:
+1. **Prefer using IDE-provided working directory** (e.g., Workspace Path) to determine file locations
+2. **Ask user when uncertain** about expected save locations
+3. **Use absolute paths** when passing to skills_run scripts
+4. Skills directory `/skills` is for code only - do not save output files to skills directory
+
+## Examples
+
+```python
+# Skill management (operates on /skills directory only)
+skills_ls(path="skills")              # List all skills
+skills_read(path="skills/pdf/SKILL.md")  # Read skill documentation
+skills_write(path="skills/my-skill/scripts/run.py", content="...")  # Add script
+
+# Execute scripts to process external files (use absolute paths)
+skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Desktop/file.pdf")
+```
+
+## Dependency Management
+
+Skills declare dependencies in `scripts/pyproject.toml`. `skills_run` automatically uses uv to install and execute in an isolated environment.
+
+To add dependencies:
+```python
+skills_write(path="skills/X/scripts/pyproject.toml", content='''[project]
+name = "x-scripts"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["requests", "pandas"]
+[tool.uv]
+managed = true
+''')
+```
+
+## Creating New Skills
+
+You **must** read skill-creator first:
+```python
+skills_read(path="skills/skill-creator/SKILL.md")
+```
+**Do not guess the structure, do not reference other skills, do not skip reading and create directly.**
+</skills_system>

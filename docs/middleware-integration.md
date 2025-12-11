@@ -1,75 +1,75 @@
-# Middleware 集成指南
+# Middleware Integration Guide
 
-本文档介绍如何通过 LangChain 原生 Middleware 集成 Agent Skills。
+This document explains how to integrate Agent Skills via LangChain native Middleware.
 
-## 概述
+## Overview
 
-对于 LangChain/LangGraph 应用，使用 `SkillsMiddleware` 直接集成，完全符合 [LangChain AgentMiddleware 协议](https://reference.langchain.com/python/langchain/middleware/)。
+For LangChain/LangGraph applications, use `SkillsMiddleware` for direct integration, fully compliant with the [LangChain AgentMiddleware protocol](https://reference.langchain.com/python/langchain/middleware/).
 
-**优势：**
-- 无需 MCP 协议，更低延迟
-- 原生 Python 调用，调试更方便
-- 自动注入工具和提示词
+**Advantages:**
+- No MCP protocol required, lower latency
+- Native Python calls, easier debugging
+- Automatic tool and prompt injection
 
-## 安装依赖
+## Install Dependencies
 
 ```bash
 uv sync --extra deepagent
-uv pip install docker  # Middleware 需要 docker 包
+uv pip install docker  # Middleware requires docker package
 ```
 
 ---
 
-## 推荐方式：使用 `get_middlewares()`
+## Recommended: Using `get_middlewares()`
 
 ```python
 from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
-# 初始化 Middleware 工厂
+# Initialize Middleware factory
 middleware_factory = SkillsMiddleware(
     skills_dir="/path/to/skills",
-    host_mount="/Users:/Users",  # 可选：挂载宿主机目录，用于脚本访问外部文件
+    host_mount="/Users:/Users",  # Optional: mount host directory for scripts to access external files
 )
 
-# 获取所有 LangChain 原生 middleware
+# Get all LangChain native middlewares
 lc_middlewares = middleware_factory.get_middlewares()
 
-# 创建 Agent - 工具和提示词通过 middleware 自动注入
+# Create Agent - tools and prompts are injected automatically via middleware
 agent = create_deep_agent(
-    tools=other_tools,  # 只需传入非技能工具（如 internet_search）
-    system_prompt="You are a helpful assistant.",  # 基础提示词
-    middleware=lc_middlewares,  # 技能系统通过 middleware 注入
+    tools=other_tools,  # Only pass non-skill tools (e.g., internet_search)
+    system_prompt="You are a helpful assistant.",  # Base prompt
+    middleware=lc_middlewares,  # Skills system injected via middleware
 )
 ```
 
-### 何时需要配置 `host_mount`？
+### When to Configure `host_mount`?
 
-`host_mount` 用于让 skills_run 脚本访问外部文件：
+`host_mount` allows skills_run scripts to access external files:
 
-**场景：skills_run 需要处理外部文件**
+**Scenario: skills_run needs to process external files**
 
 ```python
-# 用 pdf 技能处理用户的 PDF 文件
+# Use pdf skill to process user's PDF file
 middleware_factory = SkillsMiddleware(
     skills_dir="/path/to/skills",
-    host_mount="/Users:/Users",  # macOS，Linux 使用 "/home:/home"
+    host_mount="/Users:/Users",  # macOS, use "/home:/home" for Linux
 )
 
-# 现在可以使用绝对路径：
+# Now you can use absolute paths:
 # skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/report.pdf -o /Users/xxx/report.md")
 ```
 
-**不需要配置的场景：**
-- 只使用纯计算技能（如 `gcd-calculator`、`prime-list-generator`）
-- Agent 有自己的文件系统后端处理文件读写
+**Scenarios where configuration is not needed:**
+- Only using pure computation skills (like `gcd-calculator`, `prime-list-generator`)
+- Agent has its own filesystem backend for file read/write
 
-### 向后兼容：workspace_dir (deprecated)
+### Backward Compatibility: workspace_dir (deprecated)
 
-旧版本使用 `workspace_dir` 参数，该参数仍然有效但已废弃：
+Older versions use the `workspace_dir` parameter, which still works but is deprecated:
 
 ```python
-# 不推荐，请使用 host_mount
+# Not recommended, please use host_mount
 middleware_factory = SkillsMiddleware(
     skills_dir="/path/to/skills",
     workspace_dir="/path/to/workspace",  # deprecated
@@ -78,47 +78,47 @@ middleware_factory = SkillsMiddleware(
 
 ---
 
-## Middleware 组成
+## Middleware Components
 
-`get_middlewares()` 返回 3 个 LangChain 原生 middleware：
+`get_middlewares()` returns 3 LangChain native middlewares:
 
-| 序号 | 类型 | 装饰器 | 功能 |
-|------|------|--------|------|
-| 1 | 生命周期 | `@before_agent` | 在 Agent 执行前启动 Docker 容器（幂等） |
-| 2 | 提示词 | `@dynamic_prompt` | 每次模型调用前注入技能指南 + 可用技能列表 |
-| 3 | 工具 | `@before_model(tools=[...])` | 注入 6 个 `skills_*` 工具 |
+| Order | Type | Decorator | Function |
+|-------|------|-----------|----------|
+| 1 | Lifecycle | `@before_agent` | Start Docker container before Agent execution (idempotent) |
+| 2 | Prompt | `@dynamic_prompt` | Inject skills guide + available skills list before each model call |
+| 3 | Tools | `@before_model(tools=[...])` | Inject 6 `skills_*` tools |
 
-### 执行时序
+### Execution Sequence
 
 ```
-用户输入
+User Input
     │
     ▼
-@before_agent: 启动 Docker 容器
+@before_agent: Start Docker container
     │
     ▼
-@dynamic_prompt: 注入技能提示词
-    │          ├─ SKILL_GUIDE_PROMPT (~200行)
-    │          └─ 当前可用技能列表
+@dynamic_prompt: Inject skills prompt
+    │          ├─ SKILL_GUIDE_PROMPT (~200 lines)
+    │          └─ Current available skills list
     │
     ▼
-@before_model: 注入 skills_* 工具
+@before_model: Inject skills_* tools
     │
     ▼
-LLM 推理
+LLM Inference
     │
     ▼
-工具调用（如需要）
+Tool Calls (if needed)
     │
     ▼
-返回结果
+Return Result
 ```
 
 ---
 
-## 备选方式：手动获取工具和提示词
+## Alternative: Manually Get Tools and Prompts
 
-如果需要更细粒度的控制：
+For more fine-grained control:
 
 ```python
 from agent_skills.core.middleware import SkillsMiddleware
@@ -128,13 +128,13 @@ middleware = SkillsMiddleware(
     skills_dir="/path/to/skills",
 )
 
-# 手动获取工具
+# Manually get tools
 tools = middleware.get_tools()
 
-# 手动获取技能提示词
+# Manually get skills prompt
 skills_prompt = middleware.get_prompt()
 
-# 手动组合
+# Manual combination
 agent = create_deep_agent(
     tools=tools + other_tools,
     system_prompt=f"You are a helpful assistant.\n\n{skills_prompt}",
@@ -143,71 +143,71 @@ agent = create_deep_agent(
 
 ---
 
-## API 参考
+## API Reference
 
 ### SkillsMiddleware
 
 ```python
 SkillsMiddleware(
-    skills_dir: str = None,      # 技能目录路径（挂载到 /skills）
-    host_mount: str = None,      # 可选：宿主机目录挂载（如 "/Users:/Users"）
-    workspace_dir: str = None,   # deprecated，请使用 host_mount
+    skills_dir: str = None,      # Skills directory path (mounted to /skills)
+    host_mount: str = None,      # Optional: host directory mount (e.g., "/Users:/Users")
+    workspace_dir: str = None,   # deprecated, please use host_mount
 )
 ```
 
-**参数说明：**
-- `skills_dir`：技能目录路径。如果为 `None`，使用内置技能目录。挂载到 Docker 容器的 `/skills`。
-- `host_mount`：宿主机目录挂载，格式为 "host_path:container_path"。
-  - macOS 示例：`"/Users:/Users"`
-  - Linux 示例：`"/home:/home"`
-  - 用于让 skills_run 脚本访问外部文件
-- `workspace_dir`：(deprecated) 旧版参数，挂载到 `/workspace`。请使用 `host_mount` 替代。
+**Parameters:**
+- `skills_dir`: Skills directory path. If `None`, uses built-in skills directory. Mounted to Docker container's `/skills`.
+- `host_mount`: Host directory mount, format is "host_path:container_path".
+  - macOS example: `"/Users:/Users"`
+  - Linux example: `"/home:/home"`
+  - Used for skills_run scripts to access external files
+- `workspace_dir`: (deprecated) Old parameter, mounted to `/workspace`. Please use `host_mount` instead.
 
-### 方法
+### Methods
 
-| 方法 | 返回类型 | 说明 |
-|------|----------|------|
-| `get_middlewares(stop_on_exit=False)` | `List[AgentMiddleware]` | 返回 LangChain 原生 middleware 列表 |
-| `get_tools()` | `List[BaseTool]` | 返回 6 个 `skills_*` LangChain 工具 |
-| `get_prompt()` | `str` | 返回完整技能提示词（含技能列表） |
-| `close(remove_container=False)` | `None` | 停止 Docker 容器 |
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `get_middlewares(stop_on_exit=False)` | `List[AgentMiddleware]` | Returns list of LangChain native middlewares |
+| `get_tools()` | `List[BaseTool]` | Returns 6 `skills_*` LangChain tools |
+| `get_prompt()` | `str` | Returns complete skills prompt (with skills list) |
+| `close(remove_container=False)` | `None` | Stop Docker container |
 
-### 参数说明
+### Parameter Notes
 
-- `stop_on_exit=True`：Agent 执行完毕后自动停止 Docker 容器
-- `remove_container=True`：停止时同时删除容器
+- `stop_on_exit=True`: Automatically stop Docker container after Agent execution completes
+- `remove_container=True`: Also remove container when stopping
 
 ---
 
-## 执行位置与文件访问
+## Execution Location and File Access
 
-### 工具权限划分
+### Tool Permission Division
 
-| 工具 | 执行位置 | 操作范围 |
-|------|----------|----------|
-| `skills_ls/read/write/create/bash` | Docker 容器 | 仅 `/skills` 目录 |
-| `skills_run` | Docker 容器 | 可通过命令参数访问任意挂载路径 |
+| Tool | Execution Location | Scope |
+|------|-------------------|-------|
+| `skills_ls/read/write/create/bash` | Docker container | `/skills` directory only |
+| `skills_run` | Docker container | Can access any mounted path via command arguments |
 
-### 文件访问范围
+### File Access Scope
 
-**重要**：管理工具（skills_ls, skills_read 等）只能操作 `/skills` 目录。如需访问外部文件，使用 `skills_run` 并通过命令参数传递绝对路径。
+**Important**: Management tools (skills_ls, skills_read, etc.) can only operate on the `/skills` directory. To access external files, use `skills_run` and pass absolute paths via command arguments.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Docker 容器                                                │
+│  Docker Container                                           │
 │                                                             │
-│  /skills    ← 始终挂载（来自 skills_dir）                   │
-│  /Users     ← 可选挂载（来自 host_mount="/Users:/Users"）   │
+│  /skills    ← Always mounted (from skills_dir)              │
+│  /Users     ← Optional mount (from host_mount="/Users:/Users") │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-| 配置 | skills_run 可访问 | 典型用例 |
-|------|------------------|----------|
-| 只配置 `skills_dir` | 仅 `/skills` | 纯计算技能 |
-| 配置 `host_mount="/Users:/Users"` | `/skills` + `/Users/*` | 脚本需要处理用户文件 |
+| Configuration | skills_run Can Access | Typical Use Case |
+|---------------|----------------------|------------------|
+| Only `skills_dir` configured | `/skills` only | Pure computation skills |
+| `host_mount="/Users:/Users"` configured | `/skills` + `/Users/*` | Scripts need to process user files |
 
-**访问外部文件示例**：
+**External File Access Example**:
 
 ```python
 middleware = SkillsMiddleware(
@@ -215,26 +215,26 @@ middleware = SkillsMiddleware(
     host_mount="/Users:/Users",  # macOS
 )
 
-# skills_run 可以使用绝对路径
+# skills_run can use absolute paths
 # skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/doc.pdf -o /Users/xxx/doc.md")
 ```
 
 ---
 
-## 与 MCP 方式对比
+## Comparison with MCP
 
-| 特性 | Middleware | MCP |
-|------|------------|-----|
-| 协议 | Python 原生调用 | JSON-RPC over stdio |
-| 延迟 | 较低（直接 docker exec） | 较高（进程间通信） |
-| 适用场景 | LangChain/LangGraph 应用 | Claude Desktop, Cursor |
-| 依赖 | docker (Python SDK) | mcp, fastmcp |
+| Feature | Middleware | MCP |
+|---------|------------|-----|
+| Protocol | Python native calls | JSON-RPC over stdio |
+| Latency | Lower (direct docker exec) | Higher (inter-process communication) |
+| Use Cases | LangChain/LangGraph applications | Claude Desktop, Cursor |
+| Dependencies | docker (Python SDK) | mcp, fastmcp |
 
 ---
 
-## 完整示例
+## Complete Example
 
-参考 [examples/demo_deepagent_middleware.py](../examples/demo_deepagent_middleware.py)：
+See [examples/demo_deepagent_middleware.py](../examples/demo_deepagent_middleware.py):
 
 ```python
 import asyncio
@@ -243,30 +243,29 @@ from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
 async def main():
-    # 设置技能目录
+    # Set up skills directory
     skills = Path("./skills")
     skills.mkdir(exist_ok=True)
     
-    # 初始化 Middleware
+    # Initialize Middleware
     middleware = SkillsMiddleware(
         skills_dir=str(skills),
-        host_mount="/Users:/Users",  # 可选：让脚本能访问外部文件
+        host_mount="/Users:/Users",  # Optional: allow scripts to access external files
     )
     
-    # 创建 Agent
+    # Create Agent
     agent = create_deep_agent(
-        tools=[],  # 可添加其他工具
+        tools=[],  # Can add other tools
         system_prompt="You are a helpful assistant.",
         middleware=middleware.get_middlewares(),
     )
     
-    # 运行
+    # Run
     result = await agent.ainvoke({
-        "messages": [{"role": "user", "content": "列出所有可用技能"}]
+        "messages": [{"role": "user", "content": "List all available skills"}]
     })
     print(result)
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
-

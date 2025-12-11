@@ -1,120 +1,119 @@
-# 脚本迭代与清理规范
+# Script Iteration and Cleanup Guidelines
 
-在开发技能脚本时，你可能会经历多次迭代——第一个版本可能因为依赖问题、复杂度过高或其他原因无法正常执行。
+When developing skill scripts, you may go through multiple iterations—the first version may not execute properly due to dependency issues, excessive complexity, or other reasons.
 
-**核心原则：当你创建了替代脚本后，必须清理掉失败的旧脚本。**
+**Core Principle: When you create a replacement script, you must clean up the failed old scripts.**
 
 ---
 
-## ❌ 错误做法
+## ❌ Wrong Approach
 
 ```
 my-skill/scripts/
-├── convert.py              # 第一版，依赖问题无法执行
-├── convert_v2.py           # 第二版，仍然有问题
-├── convert_simple.py       # 第三版，可以工作
+├── convert.py              # First version, dependency issues, won't execute
+├── convert_v2.py           # Second version, still has problems
+├── convert_simple.py       # Third version, works
 └── pyproject.toml
 ```
 
-**问题**：
-- 目录混乱，难以维护
-- 后续使用者不知道该用哪个脚本
-- SKILL.md 中的说明可能与实际可用脚本不符
+**Problems**:
+- Messy directory, hard to maintain
+- Future users don't know which script to use
+- SKILL.md instructions may not match actual working scripts
 
 ---
 
-## ✅ 正确做法
+## ✅ Correct Approach
 
-### 方式一：删除失败的脚本
+### Method 1: Delete Failed Scripts
 
-当新脚本验证成功后，删除所有失败版本：
+After verifying new script works, delete all failed versions:
 
 ```python
-# 删除失败的脚本
+# Delete failed scripts
 skills_bash(command="rm scripts/convert.py scripts/convert_v2.py", cwd="skills/my-skill")
 ```
 
-### 方式二：重命名为主脚本
+### Method 2: Rename to Main Script
 
-如果原本有一个"主脚本名"，将成功版本重命名：
+If there was originally a "main script name", rename the successful version:
 
 ```python
-# 将成功的脚本重命名为主脚本名
+# Rename successful script to main script name
 skills_bash(command="mv scripts/convert_simple.py scripts/convert.py", cwd="skills/my-skill")
 
-# 删除旧的失败版本（如果有）
+# Delete old failed versions (if any)
 skills_bash(command="rm -f scripts/convert_v2.py", cwd="skills/my-skill")
 ```
 
-### 方式三：更新 SKILL.md
+### Method 3: Update SKILL.md
 
-如果决定保留新的脚本名，确保更新文档：
+If you decide to keep the new script name, ensure documentation is updated:
 
 ```python
-# 读取当前 SKILL.md
+# Read current SKILL.md
 skills_read(path="skills/my-skill/SKILL.md")
 
-# 修改文档中的命令示例，指向正确的脚本
-skills_write(path="skills/my-skill/SKILL.md", content="""...(更新后的内容)""")
+# Modify command examples in documentation to point to correct script
+skills_write(path="skills/my-skill/SKILL.md", content="""...(updated content)""")
 ```
 
 ---
 
-## 清理检查清单
+## Cleanup Checklist
 
-在完成技能创建后，执行以下检查：
+After completing skill creation, perform these checks:
 
-### 1. 检查文件结构
+### 1. Check File Structure
 
 ```python
 skills_ls(path="skills/<name>/scripts")
 ```
 
-确认：
-- [ ] 只包含可用的脚本
-- [ ] 没有 `_old`、`_backup`、`_v2`、`_simple` 等临时命名的残留文件
+Confirm:
+- [ ] Only contains usable scripts
+- [ ] No leftover files with `_old`, `_backup`, `_v2`, `_simple` or other temporary names
 
-### 2. 检查文档一致性
+### 2. Check Documentation Consistency
 
 ```python
 skills_read(path="skills/<name>/SKILL.md")
 ```
 
-确认：
-- [ ] 文档中的命令示例指向实际存在的脚本
-- [ ] 参数说明与脚本实际参数一致
+Confirm:
+- [ ] Command examples in documentation point to actually existing scripts
+- [ ] Parameter descriptions match actual script parameters
 
-### 3. 验证脚本可执行
+### 3. Verify Script Executes
 
 ```python
 skills_run(name="<name>", command="python scripts/main.py --help")
 ```
 
-确认：
-- [ ] 脚本可以正常执行
-- [ ] 帮助信息正确显示
+Confirm:
+- [ ] Script executes normally
+- [ ] Help information displays correctly
 
 ---
 
-## 为什么这很重要？
+## Why This Matters?
 
-技能包是**可复用的能力模块**。一个整洁、文档准确的技能包：
+Skill packages are **reusable capability modules**. A clean, accurately documented skill package:
 
-| 好处 | 说明 |
-|------|------|
-| 易于理解 | 其他 Agent 或用户能快速上手 |
-| 避免困惑 | 不会误执行失败的脚本 |
-| 专业规范 | 体现良好的开发习惯 |
-| 便于维护 | 后续修改时不会被历史文件干扰 |
+| Benefit | Description |
+|---------|-------------|
+| Easy to understand | Other Agents or users can quickly get started |
+| Avoid confusion | Won't accidentally execute failed scripts |
+| Professional standards | Demonstrates good development practices |
+| Easy to maintain | Later modifications won't be disrupted by historical files |
 
 ---
 
-## 迭代开发建议
+## Iterative Development Suggestions
 
-如果预期脚本需要多次迭代：
+If scripts are expected to require multiple iterations:
 
-1. **先用简单版本验证思路**：从最简单的实现开始
-2. **验证成功后再增加复杂度**：逐步添加功能
-3. **及时清理**：每次迭代成功后立即清理旧版本
-4. **保持单一入口**：最终只保留一个主脚本
-
+1. **Verify ideas with simple version first**: Start with the simplest implementation
+2. **Add complexity after successful verification**: Gradually add features
+3. **Clean up promptly**: Clean up old versions immediately after each successful iteration
+4. **Maintain single entry point**: Keep only one main script in the end

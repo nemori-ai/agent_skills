@@ -1,71 +1,71 @@
-# Complete Example: Create Code Reviewer Skill
+# 完整示例：创建代码审查技能
 
-This document demonstrates the complete process of creating a skill package from scratch.
+本文档演示从零创建一个完整技能包的全过程。
 
-## Goal
+## 目标
 
-Create a Python code review skill that can:
-- Check syntax errors
-- Detect unused imports
-- Output review report
+创建一个 Python 代码审查技能，能够：
+- 检查语法错误
+- 发现未使用的导入
+- 输出审查报告
 
 ---
 
-## Step 1: Create Skill Skeleton
+## 第一步：创建技能骨架
 
 ```python
 skills_create(
     name="code-reviewer",
-    description="Review Python code, check style and potential issues",
-    instructions="""# Python Code Reviewer
+    description="审查 Python 代码，检查风格和潜在问题",
+    instructions="""# Python 代码审查器
 
-## Usage
+## 使用方法
 
 ```
 skills_run(name="code-reviewer", command="python scripts/review.py <file>")
 ```
 
-## Script Description
+## 脚本说明
 
-- `scripts/review.py`: Main review script, checks syntax, style, and common issues
-- `data/rules.json`: Review rules configuration
+- `scripts/review.py`: 主审查脚本，检查语法、风格和常见问题
+- `data/rules.json`: 审查规则配置
 
-## Check Items
+## 检查项目
 
-1. Syntax errors
-2. Unused imports
-3. Function length
-4. Naming conventions
+1. 语法错误
+2. 未使用的导入
+3. 函数长度
+4. 命名规范
 """
 )
 ```
 
 ---
 
-## Step 2: Add Main Script
+## 第二步：添加主脚本
 
 ```python
 skills_write(
     path="skills/code-reviewer/scripts/review.py",
     content='''#!/usr/bin/env python3
-"""Python code review script"""
+"""Python 代码审查脚本"""
 import ast
 import sys
 from pathlib import Path
 
 
 def check_syntax(code: str) -> list[str]:
-    """Check syntax errors"""
+    """检查语法错误"""
     issues = []
     try:
         ast.parse(code)
     except SyntaxError as e:
-        issues.append(f"Syntax error (line {e.lineno}): {e.msg}")
+        issues.append(f"语法错误 (行 {e.lineno}): {e.msg}")
     return issues
 
 
 def check_imports(tree: ast.AST) -> list[str]:
-    """Check unused imports"""
+    """检查未使用的导入"""
     issues = []
     imports = set()
     used_names = set()
@@ -82,32 +82,32 @@ def check_imports(tree: ast.AST) -> list[str]:
     
     unused = imports - used_names
     for name in unused:
-        issues.append(f"Unused import: {name}")
+        issues.append(f"未使用的导入: {name}")
     
     return issues
 
 
 def review_file(filepath: str) -> None:
-    """Review single file"""
+    """审查单个文件"""
     path = Path(filepath)
     if not path.exists():
-        print(f"Error: File not found - {filepath}")
+        print(f"错误: 文件不存在 - {filepath}")
         sys.exit(1)
     
     code = path.read_text()
-    print(f"Reviewing file: {filepath}")
+    print(f"审查文件: {filepath}")
     print("=" * 50)
     
-    # Syntax check
+    # 语法检查
     issues = check_syntax(code)
     if issues:
         for issue in issues:
             print(f"❌ {issue}")
         return
     
-    print("✓ Syntax correct")
+    print("✓ 语法正确")
     
-    # Further checks
+    # 进一步检查
     tree = ast.parse(code)
     issues = check_imports(tree)
     
@@ -115,9 +115,9 @@ def review_file(filepath: str) -> None:
         for issue in issues:
             print(f"⚠️  {issue}")
     else:
-        print("✓ Import check passed")
+        print("✓ 导入检查通过")
     
-    print("\\nReview complete")
+    print("\\n审查完成")
 
 
 if __name__ == "__main__":
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
 ---
 
-## Step 3: Add Configuration File
+## 第三步：添加配置文件
 
 ```python
 skills_write(
@@ -142,13 +142,13 @@ skills_write(
 
 ---
 
-## Step 4: Verify File Structure
+## 第四步：验证文件结构
 
 ```python
 skills_ls(path="skills/code-reviewer")
 ```
 
-Expected output:
+期望输出：
 ```
 Contents of 'skills/code-reviewer' (4 items):
   SKILL.md
@@ -160,34 +160,34 @@ Contents of 'skills/code-reviewer' (4 items):
 skills_ls(path="skills/code-reviewer/scripts")
 ```
 
-Expected output:
+期望输出：
 ```
 Contents of 'skills/code-reviewer/scripts' (2 items):
-  pyproject.toml  (auto-generated)
+  pyproject.toml  (自动生成)
   review.py
 ```
 
 ---
 
-## Step 5: Test Run
+## 第五步：测试运行
 
-### Test the Script Itself
+### 测试脚本本身
 
 ```python
 skills_run(name="code-reviewer", command="python scripts/review.py scripts/review.py")
 ```
 
-Expected output:
+期望输出：
 ```
-Reviewing file: scripts/review.py
+审查文件: scripts/review.py
 ==================================================
-✓ Syntax correct
-✓ Import check passed
+✓ 语法正确
+✓ 导入检查通过
 
-Review complete
+审查完成
 ```
 
-### Test User File
+### 测试用户文件
 
 ```python
 skills_run(name="code-reviewer", command="python scripts/review.py /workspace/my_code.py")
@@ -195,26 +195,27 @@ skills_run(name="code-reviewer", command="python scripts/review.py /workspace/my
 
 ---
 
-## Final File Structure
+## 最终文件结构
 
 ```
 code-reviewer/
-├── SKILL.md                 # Skill documentation
+├── SKILL.md                 # 技能说明文档
 ├── scripts/
-│   ├── review.py            # Main review script
-│   └── pyproject.toml       # Dependency config (auto-generated)
+│   ├── review.py            # 主审查脚本
+│   └── pyproject.toml       # 依赖配置（自动生成）
 └── data/
-    └── rules.json           # Review rules configuration
+    └── rules.json           # 审查规则配置
 ```
 
 ---
 
-## Key Points Summary
+## 要点总结
 
-| Step | Tool | Description |
-|------|------|-------------|
-| Create skeleton | `skills_create` | Define name, description, and initial documentation |
-| Add script | `skills_write` | Path format: `skills/<name>/scripts/xxx.py` |
-| Add data | `skills_write` | Path format: `skills/<name>/data/xxx.json` |
-| Verify structure | `skills_ls` | Confirm files created correctly |
-| Test run | `skills_run` | Verify functionality works |
+| 步骤 | 工具 | 说明 |
+|------|------|------|
+| 创建骨架 | `skills_create` | 定义名称、描述和初始文档 |
+| 添加脚本 | `skills_write` | 路径格式：`skills/<name>/scripts/xxx.py` |
+| 添加数据 | `skills_write` | 路径格式：`skills/<name>/data/xxx.json` |
+| 验证结构 | `skills_ls` | 确认文件正确创建 |
+| 测试运行 | `skills_run` | 验证功能正常 |
+

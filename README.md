@@ -1,29 +1,31 @@
 # Agent Skills
 
-**让所有 AI Agent 一键拥有 Skills 能力，推动 Agent 自我进化**
+**Enable any AI Agent to gain Skills capability with one click, driving Agent self-evolution**
 
-## 愿景
+> 📖 [中文文档 (Chinese Documentation)](docs/README_cn.md)
 
-我们相信 AI Agent 应该具备**自我进化**的能力——不仅能执行任务，还能学习新技能、创造新工具。
+## Vision
 
-**Skills（技能）** 是实现这一愿景的核心机制：
-- Agent 可以随时学习预先封装的专业知识和脚本
-- Agent 可以根据需要创建全新的技能
-- 技能以独立模块形式存在，可分享、可复用
+We believe AI Agents should have the ability to **self-evolve**—not just execute tasks, but also learn new skills and create new tools.
 
-**Agent Skills** 让任何 AI Agent 都能一键获得这种能力：
+**Skills** are the core mechanism to realize this vision:
+- Agents can learn pre-packaged professional knowledge and scripts at any time
+- Agents can create entirely new skills as needed
+- Skills exist as independent modules that can be shared and reused
 
-- 支持 **MCP 协议**：兼容 Claude Desktop、Cursor 等
-- 支持 **LangChain Middleware**：原生集成到你的 Agent 应用
-- **Docker 隔离执行**：安全可靠，开箱即用
-- **渐进式披露**：轻量加载，按需读取
+**Agent Skills** enables any AI Agent to gain this capability with one click:
+
+- **MCP Protocol Support**: Compatible with Claude Desktop, Cursor, etc.
+- **LangChain Middleware Support**: Native integration into your Agent applications
+- **Docker Isolated Execution**: Secure, reliable, and ready to use out of the box
+- **Progressive Disclosure**: Lightweight loading, on-demand reading
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      你的 AI Agent                          │
+│                      Your AI Agent                          │
 │                                                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │ LangChain   │  │ Claude      │  │ 自定义      │         │
+│  │ LangChain   │  │ Claude      │  │ Custom      │         │
 │  │ Agent       │  │ Desktop     │  │ Agent       │         │
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
 │         │                │                │                 │
@@ -39,40 +41,55 @@
 │                          │                                  │
 │                          ▼                                  │
 │              ┌───────────────────────┐                      │
-│              │   Skills 生态系统     │                      │
-│              │  PDF处理 | 代码审查   │                      │
-│              │  数据分析 | 自定义... │                      │
+│              │   Skills Ecosystem    │                      │
+│              │  PDF | Code Review    │                      │
+│              │  Data Analysis | ...  │                      │
 │              └───────────────────────┘                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 功能特性
+## Features
 
-- **统一工具集**：6 个 `skills_*` 工具，功能原子化，易于理解
-- **Docker 隔离执行**：在容器中运行命令，预装常用工具和库
-- **双重集成方式**：
-  - MCP 协议：兼容 Claude Desktop、Cursor 等
-  - LangChain Middleware：原生 Python 集成，更低延迟
-- **渐进式披露**：技能元数据预加载，完整内容按需读取
-- **元技能自动复制**：自定义 skills 目录时自动获得 `skill-creator`
+- **Unified Toolset**: 6 `skills_*` tools with atomic functionality, easy to understand
+- **Docker Isolated Execution**: Run commands in containers with pre-installed tools and libraries
+- **Dual Integration Options**:
+  - MCP Protocol: Compatible with Claude Desktop, Cursor, etc.
+  - LangChain Middleware: Native Python integration with lower latency
+- **Progressive Disclosure**: Skill metadata pre-loaded, full content read on demand
+- **Meta-skill Auto-copy**: Automatically get `skill-creator` when using custom skills directory
 
 ---
 
-## 快速开始
+## Built-in Skills
 
-### 1. 构建 Docker 镜像
+In addition to the core framework capabilities, we provide several carefully designed skills ready to use:
+
+| Skill | Description | Highlights |
+|-------|-------------|------------|
+| 🛠️ **skill-creator** | Meta-skill that teaches you how to create new skills | Complete creation guide and templates |
+| 📄 **pdf** | Comprehensive PDF processing toolkit | Text extraction, table parsing, merge/split, form filling |
+| 🌐 **website_design** | Website design system | Monochrome, Bauhaus and other unique style specifications |
+| ⬇️ **file-downloader** | File downloader | HTTP/HTTPS support, automatic filename detection |
+
+> 🌟 **We look forward to you creating more interesting skills!** Using the `skill-creator` meta-skill, you can easily package your professional knowledge and tools. If you create useful skills, feel free to contribute to the community.
+
+---
+
+## Quick Start
+
+### 1. Build Docker Image
 
 ```bash
 docker build -t agent-skills:latest -f docker_config/Dockerfile .
 ```
 
-### 2. 选择集成方式
+### 2. Choose Integration Method
 
-**方式 A：Claude Desktop / Cursor（MCP）**
+**Option A: Claude Desktop / Cursor (MCP)**
 
-编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -88,22 +105,24 @@ docker build -t agent-skills:latest -f docker_config/Dockerfile .
 }
 ```
 
-两个挂载的作用：
-- `~/.agent-skills/skills:/skills` - skills 目录（必需）
-- `/Users:/Users` - 宿主机文件访问（可选，用于脚本读写外部文件）
+The two mounts serve these purposes:
+- `~/.agent-skills/skills:/skills` - Skills directory (required), modify to your preferred storage location
+- `/Users:/Users` - Host file access (optional, for scripts to read/write external files)
 
-> 💡 Linux 系统请将 `/Users:/Users` 改为 `/home:/home`
+> 💡 **Tip**: To get the same effect as Middleware (which can inject system prompts) when using MCP, add a `.cursor/rules/python/skills_prompt.mdc` file to your project root. This helps guide Cursor to use skills effectively. See [MCP Integration](docs/mcp-integration.md) for details.
 
-**方式 B：LangChain 应用（Middleware）**
+> 💡 On Linux, change `/Users:/Users` to `/home:/home`
+
+**Option B: LangChain Application (Middleware)**
 
 ```python
 from agent_skills.core.middleware import SkillsMiddleware
 from deepagents import create_deep_agent
 
-# 配置 skills_dir 和宿主机目录挂载
+# Configure skills_dir and host directory mount
 middleware = SkillsMiddleware(
     skills_dir="/path/to/skills",
-    host_mount="/Users:/Users",  # 可选，用于脚本访问外部文件
+    host_mount="/Users:/Users",  # Optional, for scripts to access external files
 )
 
 agent = create_deep_agent(
@@ -115,29 +134,29 @@ agent = create_deep_agent(
 
 ---
 
-## 文档
+## Documentation
 
-| 文档 | 说明 |
-|------|------|
-| [工具参考](docs/tools.md) | 6 个 `skills_*` 工具详解 |
-| [MCP 集成](docs/mcp-integration.md) | Claude Desktop / Cursor 配置 |
-| [Middleware 集成](docs/middleware-integration.md) | LangChain 原生集成 |
-| [示例 Demo](docs/examples.md) | 4 个示例程序说明 |
-| [Docker 环境](docs/docker-environment.md) | 预装工具和环境变量 |
-| [Skill 格式](docs/skill-format.md) | 如何编写和组织 Skill |
+| Document | Description |
+|----------|-------------|
+| [Tools Reference](docs/tools.md) | Detailed explanation of 6 `skills_*` tools |
+| [MCP Integration](docs/mcp-integration.md) | Claude Desktop / Cursor configuration |
+| [Middleware Integration](docs/middleware-integration.md) | LangChain native integration |
+| [Examples](docs/examples.md) | 4 example programs |
+| [Docker Environment](docs/docker-environment.md) | Pre-installed tools and environment variables |
+| [Skill Format](docs/skill-format.md) | How to write and organize Skills |
 
 ---
 
-## 开发
+## Development
 
 ```bash
-# 安装依赖
+# Install dependencies
 uv sync
 
-# 运行测试
+# Run tests
 uv run pytest tests/ -v
 
-# 本地启动 MCP Server
+# Start MCP Server locally
 uv run agent-skills-server
 ```
 

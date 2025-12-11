@@ -1,58 +1,58 @@
-# 快速开始：从零创建技能
+# Quick Start: Create Skills from Scratch
 
-本指南帮助你在 5 分钟内创建第一个技能包。
+This guide helps you create your first skill package in 5 minutes.
 
-## 创建流程概览
+## Creation Process Overview
 
 ```
-1. skills_create()     → 创建技能骨架
-2. skills_write()      → 添加脚本文件
-3. skills_write()      → 添加数据/模板（可选）
-4. skills_ls()         → 查看文件结构
-5. skills_run()        → 测试运行
+1. skills_create()     → Create skill skeleton
+2. skills_write()      → Add script files
+3. skills_write()      → Add data/templates (optional)
+4. skills_ls()         → View file structure
+5. skills_run()        → Test run
 ```
 
 ---
 
-## 第一步：创建技能骨架
+## Step 1: Create Skill Skeleton
 
-使用 `skills_create` 创建技能的基础结构：
+Use `skills_create` to create the basic structure:
 
 ```python
 skills_create(
     name="my-analyzer",
-    description="分析数据文件并生成报告",
-    instructions="# 数据分析器\n\n## 使用方法\n运行 `skills_run(name=\"my-analyzer\", command=\"python scripts/analyze.py <file>\")`"
+    description="Analyze data files and generate reports",
+    instructions="# Data Analyzer\n\n## Usage\nRun `skills_run(name=\"my-analyzer\", command=\"python scripts/analyze.py <file>\")`"
 )
 ```
 
-### 命名规范
+### Naming Conventions
 
-| 规则 | 正确示例 | 错误示例 |
-|------|----------|----------|
-| 使用小写字母 | `code-reviewer` | `Code-Reviewer` |
-| 用连字符分隔单词 | `data-analyzer` | `dataAnalyzer` |
-| 可包含数字 | `pdf2image` | `pdf_to_image` |
+| Rule | Correct Example | Wrong Example |
+|------|-----------------|---------------|
+| Use lowercase letters | `code-reviewer` | `Code-Reviewer` |
+| Separate words with hyphens | `data-analyzer` | `dataAnalyzer` |
+| Can include numbers | `pdf2image` | `pdf_to_image` |
 
 ---
 
-## 第二步：添加脚本
+## Step 2: Add Script
 
-使用 `skills_write` 添加可执行脚本：
+Use `skills_write` to add executable scripts:
 
 ```python
 skills_write(
     path="skills/my-analyzer/scripts/analyze.py",
     content='''#!/usr/bin/env python3
-"""数据分析脚本"""
+"""Data analysis script"""
 import sys
 import json
 
 def analyze(filepath):
     with open(filepath) as f:
         data = json.load(f)
-    # 分析逻辑...
-    print(f"分析了 {len(data)} 条记录")
+    # Analysis logic...
+    print(f"Analyzed {len(data)} records")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -63,73 +63,72 @@ if __name__ == "__main__":
 )
 ```
 
-> **提示**：当你向 `scripts/` 目录添加 `.py` 文件时，系统会自动生成 `pyproject.toml` 用于依赖管理。
+> **Tip**: When you add `.py` files to the `scripts/` directory, the system automatically generates `pyproject.toml` for dependency management.
 
 ---
 
-## 第三步：添加数据/模板（可选）
+## Step 3: Add Data/Templates (Optional)
 
-如果技能需要模板或配置文件：
+If the skill needs templates or configuration files:
 
 ```python
 skills_write(
     path="skills/my-analyzer/data/report_template.md",
-    content="# 分析报告\n\n日期: {{date}}\n\n## 结果\n{{results}}"
+    content="# Analysis Report\n\nDate: {{date}}\n\n## Results\n{{results}}"
 )
 ```
 
 ---
 
-## 第四步：查看和验证
+## Step 4: View and Verify
 
-确认文件结构正确：
+Confirm the file structure is correct:
 
 ```python
-# 查看技能目录结构
+# View skill directory structure
 skills_ls(path="skills/my-analyzer")
 
-# 读取特定文件内容
+# Read specific file content
 skills_read(path="skills/my-analyzer/scripts/analyze.py")
 ```
 
-期望看到类似结构：
+Expected structure:
 ```
 my-analyzer/
 ├── SKILL.md
 ├── scripts/
 │   ├── analyze.py
-│   └── pyproject.toml  (自动生成)
+│   └── pyproject.toml  (auto-generated)
 └── data/
     └── report_template.md
 ```
 
 ---
 
-## 第五步：测试运行
+## Step 5: Test Run
 
-执行脚本验证功能：
+Execute script to verify functionality:
 
 ```python
 skills_run(name="my-analyzer", command="python scripts/analyze.py /workspace/sample.json")
 ```
 
-> ⚠️ **路径规范**：输入/输出文件应使用 `/workspace/` 前缀，不要将用户文件保存到技能目录！
-> 详见 [脚本编写规范](script-guidelines.md)。
+> ⚠️ **Path Guidelines**: Input/output files should use absolute paths. Do not save user files to skill directory!
+> See [Script Writing Guidelines](script-guidelines.md) for details.
 
-### 常见问题
+### Common Issues
 
-| 问题 | 解决方案 |
-|------|----------|
-| 依赖缺失 | 编辑 `scripts/pyproject.toml` 添加依赖 |
-| 脚本执行失败 | 检查路径、参数是否正确 |
-| 权限问题 | 确保脚本有执行权限 |
-| 文件保存到技能目录 | 使用 `/workspace/` 前缀作为输出路径 |
+| Issue | Solution |
+|-------|----------|
+| Missing dependency | Edit `scripts/pyproject.toml` to add dependencies |
+| Script execution failed | Check if paths and arguments are correct |
+| Permission issues | Ensure script has execution permissions |
+| Files saved to skill directory | Use absolute paths for output |
 
 ---
 
-## 下一步
+## Next Steps
 
-- 📝 **完善文档**：阅读 [SKILL.md 编写模板](skillmd-template.md)
-- 🔧 **添加更多脚本**：阅读 [脚本编写规范](script-guidelines.md)
-- 📚 **参考完整案例**：阅读 [完整示例](full-example.md)
-
+- 📝 **Improve documentation**: Read [SKILL.md Writing Template](skillmd-template.md)
+- 🔧 **Add more scripts**: Read [Script Writing Guidelines](script-guidelines.md)
+- 📚 **Reference complete case**: Read [Complete Example](full-example.md)

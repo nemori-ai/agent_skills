@@ -1,60 +1,60 @@
 ---
-description: 从指定 URL 下载文件到本地，支持多种协议和下载选项
+description: Download files from specified URLs to local, supporting multiple protocols and download options
 name: file-downloader
 ---
 
-# 文件下载器
+# File Downloader
 
-从指定 URL 下载文件到本地，支持 HTTP/HTTPS 协议。
+Download files from specified URLs to local, supporting HTTP/HTTPS protocols.
 
-## ⚠️ 重要提示
+## ⚠️ Important Note
 
-**始终使用 `/workspace/` 作为输出目录！** Skills 目录应保持整洁，只存放技能代码。
+**Always use absolute paths for output!** Skills directory should remain clean, only storing skill code.
 
-## 使用方法
+## Usage
 
-### 基本下载
+### Basic Download
 ```python
-# 下载文件到工作空间（推荐）
-skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /workspace/file.pdf")
+# Download file (recommended)
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Downloads/file.pdf")
 
-# 下载并显示进度
-skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /workspace/file.pdf -v")
+# Download with progress display
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Downloads/file.pdf -v")
 ```
 
-### 高级选项
+### Advanced Options
 ```python
-# 设置超时时间（秒）
-skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /workspace/file.pdf --timeout 60")
+# Set timeout (seconds)
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Downloads/file.pdf --timeout 60")
 
-# 设置用户代理
-skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /workspace/file.pdf --user-agent 'Mozilla/5.0'")
+# Set user agent
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Downloads/file.pdf --user-agent 'Mozilla/5.0'")
 
-# 覆盖已存在的文件
-skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /workspace/file.pdf -f")
+# Overwrite existing file
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Downloads/file.pdf -f")
 ```
 
-## 特性
+## Features
 
-- ✅ 支持 HTTP/HTTPS 协议
-- ✅ 自动检测文件名
-- ✅ 显示下载进度
-- ✅ 断点续传（TODO）
-- ✅ 自定义请求头
-- ✅ 文件完整性验证
+- ✅ HTTP/HTTPS protocol support
+- ✅ Automatic filename detection
+- ✅ Download progress display
+- ✅ Resume download (TODO)
+- ✅ Custom request headers
+- ✅ File integrity verification
 
-## 参数说明
+## Parameters
 
-- `url`: 要下载的文件 URL（必需）
-- `-o, --output`: 输出文件路径（**必须使用 `/workspace/` 前缀**）
-- `-v, --verbose`: 显示详细进度信息
-- `-f, --force`: 覆盖已存在的文件
-- `--timeout`: 请求超时时间，单位秒（默认30秒）
-- `--user-agent`: 自定义 User-Agent
+- `url`: URL of file to download (required)
+- `-o, --output`: Output file path (**use absolute path**)
+- `-v, --verbose`: Show detailed progress info
+- `-f, --force`: Overwrite existing file
+- `--timeout`: Request timeout in seconds (default 30s)
+- `--user-agent`: Custom User-Agent
 
-## 路径说明
+## Path Guidelines
 
-| 路径 | 说明 |
-|------|------|
-| `/workspace/` | 用户工作空间，**所有下载文件应保存到这里** |
-| `/skills/` | 技能代码目录，请勿在此保存用户文件 |
+| Path | Description |
+|------|-------------|
+| Absolute paths | User workspace, **all downloaded files should be saved here** |
+| `/skills/` | Skill code directory, do not save user files here |

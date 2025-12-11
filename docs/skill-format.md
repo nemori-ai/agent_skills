@@ -1,106 +1,106 @@
-# Skill 格式
+# Skill Format
 
-本文档介绍如何编写和组织 Skill（技能包）。
+This document explains how to write and organize Skills (skill packages).
 
-## 概述
+## Overview
 
-Skill 是一个包含指南、脚本和数据的完整目录结构，教 Agent 如何完成特定任务。
+A Skill is a complete directory structure containing guides, scripts, and data that teaches an Agent how to complete specific tasks.
 
-## 目录结构
+## Directory Structure
 
 ```
 my-skill/
-├── SKILL.md          # 入口指南（必需）
-├── scripts/          # 可执行脚本
+├── SKILL.md          # Entry guide (required)
+├── scripts/          # Executable scripts
 │   ├── main.py
-│   └── pyproject.toml  # 依赖配置（自动生成）
-├── data/             # 模板和数据文件
+│   └── pyproject.toml  # Dependency configuration (auto-generated)
+├── data/             # Templates and data files
 │   └── template.txt
-├── docs/             # 详细文档（可选）
+├── docs/             # Detailed documentation (optional)
 │   └── advanced.md
-└── examples/         # 示例文件
+└── examples/         # Example files
     └── sample.json
 ```
 
 ---
 
-## SKILL.md 格式
+## SKILL.md Format
 
-SKILL.md 是技能的入口文档，使用 YAML frontmatter + Markdown。
+SKILL.md is the entry document for a skill, using YAML frontmatter + Markdown.
 
-### 基本结构
+### Basic Structure
 
 ```markdown
 ---
 name: my-skill
-description: 简洁的功能描述（一句话）
+description: Brief function description (one sentence)
 ---
 
-# 技能名称
+# Skill Name
 
-## 概述
-这个技能做什么，适用于什么场景。
+## Overview
+What this skill does, what scenarios it's suitable for.
 
-## 使用方法
+## Usage
 
-### 基本用法
+### Basic Usage
 \`\`\`
 skills_run(name="my-skill", command="python scripts/main.py <args>")
 \`\`\`
 
-### 参数说明
-- `<input>`：输入文件路径
-- `--output`：输出文件路径（可选）
+### Parameter Description
+- `<input>`: Input file path
+- `--output`: Output file path (optional)
 
-## 脚本说明
+## Script Description
 
-| 脚本 | 功能 |
-|------|------|
-| `scripts/main.py` | 主逻辑脚本 |
+| Script | Function |
+|--------|----------|
+| `scripts/main.py` | Main logic script |
 
-## 示例
+## Examples
 
-输入：...
-输出：...
+Input: ...
+Output: ...
 
-## 注意事项
-- 注意事项 1
-- 注意事项 2
+## Notes
+- Note 1
+- Note 2
 ```
 
 ### YAML Frontmatter
 
-| 字段 | 必需 | 说明 |
-|------|------|------|
-| `name` | 是 | 技能唯一标识，与目录名一致 |
-| `description` | 是 | 简短描述，显示在技能列表中 |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Skill unique identifier, matches directory name |
+| `description` | Yes | Short description, displayed in skill list |
 
-### 命名规则
+### Naming Rules
 
-- 必须以小写字母开头
-- 只能包含小写字母、数字和连字符
-- 正确：`code-reviewer`, `data-analyzer`, `pdf2image`
-- 错误：`Code-Reviewer`, `dataAnalyzer`, `my_tool`
+- Must start with a lowercase letter
+- Can only contain lowercase letters, numbers, and hyphens
+- Valid: `code-reviewer`, `data-analyzer`, `pdf2image`
+- Invalid: `Code-Reviewer`, `dataAnalyzer`, `my_tool`
 
 ---
 
-## 脚本编写
+## Script Writing
 
-### Python 脚本模板
+### Python Script Template
 
 ```python
 #!/usr/bin/env python3
-"""脚本功能描述"""
+"""Script function description"""
 import argparse
 import sys
 
 def main():
-    parser = argparse.ArgumentParser(description="脚本功能")
-    parser.add_argument("input", help="输入文件")
-    parser.add_argument("-o", "--output", help="输出文件", default="-")
+    parser = argparse.ArgumentParser(description="Script function")
+    parser.add_argument("input", help="Input file")
+    parser.add_argument("-o", "--output", help="Output file", default="-")
     args = parser.parse_args()
     
-    # 处理逻辑...
+    # Processing logic...
     result = process(args.input)
     
     if args.output == "-":
@@ -113,9 +113,9 @@ if __name__ == "__main__":
     main()
 ```
 
-### 依赖管理
+### Dependency Management
 
-如果脚本需要第三方库，编辑 `scripts/pyproject.toml`：
+If scripts require third-party libraries, edit `scripts/pyproject.toml`:
 
 ```toml
 [project]
@@ -131,13 +131,13 @@ dependencies = [
 managed = true
 ```
 
-当 `skills_run` 执行有 `pyproject.toml` 的技能时，会自动使用 `uv` 创建隔离环境。
+When `skills_run` executes a skill with `pyproject.toml`, it automatically uses `uv` to create an isolated environment.
 
 ---
 
-## 创建技能
+## Creating Skills
 
-### 使用 skills_create
+### Using skills_create
 
 ```python
 skills_create(
@@ -147,7 +147,7 @@ skills_create(
 )
 ```
 
-### 添加脚本
+### Adding Scripts
 
 ```python
 skills_write(
@@ -156,7 +156,7 @@ skills_write(
 )
 ```
 
-### 添加数据文件
+### Adding Data Files
 
 ```python
 skills_write(
@@ -167,13 +167,13 @@ skills_write(
 
 ---
 
-## 元技能：skill-creator
+## Meta-skill: skill-creator
 
-系统内置 `skill-creator` 元技能，教 Agent 如何创建新技能。
+The system includes the `skill-creator` meta-skill, which teaches Agents how to create new skills.
 
-当使用自定义 skills 目录时，`skill-creator` 会自动复制到该目录。
+When using a custom skills directory, `skill-creator` is automatically copied to that directory.
 
-查看元技能：
+View meta-skill:
 
 ```python
 skills_read(path="skills/skill-creator/SKILL.md")
@@ -181,34 +181,34 @@ skills_read(path="skills/skill-creator/SKILL.md")
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
 agent_skills/
 ├── agent_skills/
 │   ├── core/
-│   │   ├── skill_manager.py  # Skill 发现和管理
-│   │   ├── types.py          # 类型定义
-│   │   ├── middleware.py     # LangChain Middleware 集成
-│   │   ├── docker_runner.py  # Docker 容器管理
-│   │   └── tools_factory.py  # LangChain 工具工厂
+│   │   ├── skill_manager.py  # Skill discovery and management
+│   │   ├── types.py          # Type definitions
+│   │   ├── middleware.py     # LangChain Middleware integration
+│   │   ├── docker_runner.py  # Docker container management
+│   │   └── tools_factory.py  # LangChain tools factory
 │   ├── mcp/
-│   │   ├── server.py         # MCP Server 入口
-│   │   ├── tools.py          # 6 个 skills_* 工具 (MCP)
+│   │   ├── server.py         # MCP Server entry
+│   │   ├── tools.py          # 6 skills_* tools (MCP)
 │   │   └── prompts.py        # Skill Guide Prompt
-│   └── skills/               # 内置技能
-│       ├── skill-creator/    # 创建技能的元技能
-│       ├── gcd-calculator/   # 最大公约数计算
-│       ├── pdf/              # PDF 处理
+│   └── skills/               # Built-in skills
+│       ├── skill-creator/    # Meta-skill for creating skills
+│       ├── gcd-calculator/   # Greatest common divisor calculation
+│       ├── pdf/              # PDF processing
 │       └── ...
 ├── docker_config/
 │   └── Dockerfile
 ├── examples/
-│   ├── demo_skills.py        # 本地 Demo
+│   ├── demo_skills.py        # Local Demo
 │   ├── demo_with_docker.py   # Docker Demo
 │   ├── demo_deepagent.py     # Deep Agent + MCP Demo
 │   └── demo_middleware.py    # Deep Agent + Middleware Demo
-├── docs/                     # 文档
+├── docs/                     # Documentation
 ├── tests/
 ├── pyproject.toml
 └── README.md
@@ -216,26 +216,25 @@ agent_skills/
 
 ---
 
-## 最佳实践
+## Best Practices
 
-### 文档编写
+### Documentation Writing
 
-- 开门见山：第一段说清楚技能做什么
-- 命令可复制：示例命令可以直接使用
-- 参数明确：列出所有参数及其含义
-- 有输入输出示例：让用户知道期望结果
+- Get straight to the point: First paragraph clearly states what the skill does
+- Copyable commands: Example commands can be used directly
+- Clear parameters: List all parameters and their meanings
+- Input/output examples: Let users know expected results
 
-### 脚本编写
+### Script Writing
 
-- 使用 `argparse` 处理参数
-- 支持 stdin/stdout（使用 `-` 表示）
-- 优先使用标准库，减少依赖
-- 添加清晰的错误信息
+- Use `argparse` for parameter handling
+- Support stdin/stdout (use `-` to indicate)
+- Prefer standard library, minimize dependencies
+- Add clear error messages
 
-### 目录组织
+### Directory Organization
 
-- 脚本放在 `scripts/` 目录
-- 模板和配置放在 `data/` 目录
-- 详细文档放在 `docs/` 目录
-- 示例文件放在 `examples/` 目录
-
+- Scripts go in `scripts/` directory
+- Templates and configurations go in `data/` directory
+- Detailed documentation goes in `docs/` directory
+- Example files go in `examples/` directory

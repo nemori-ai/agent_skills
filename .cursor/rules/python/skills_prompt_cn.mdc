@@ -1,0 +1,97 @@
+---
+alwaysApply: true
+---
+<skills_system>
+
+## 什么是技能？
+
+技能 (Skill) 是封装好的专业能力模块，包含：
+- SKILL.md：说明书
+- scripts/：可执行脚本 + pyproject.toml（依赖声明）
+- data/：模板和数据
+
+## 何时使用技能？
+
+**主动检查技能**（用 `skills_ls(path="skills")`）当：
+- 用户明确说"用 XX 技能"、"帮我运行 XX"
+- 任务涉及专业能力：数学计算、代码分析、格式转换、文档生成等
+- 任务需要执行脚本或有标准化流程
+- 你自身能力无法直接完成某项操作
+
+用户不一定会明说需要技能，你应**主动判断**是否有合适的技能可用。
+
+## 何时创建技能？
+
+考虑创建新技能当：
+- 当前任务你**无法独立完成**（需要特定工具/库/API）
+- 任务具有**重复性**（同类操作会反复出现）
+- 任务有**明确的流程步骤**（可标准化封装）
+
+创建前先检查是否已有类似技能：`skills_ls(path="skills")`
+
+## 使用流程
+
+1. **发现** → `skills_ls(path="skills")`
+2. **学习** → `skills_read(path="skills/X/SKILL.md")`
+3. **确认脚本** → `skills_ls(path="skills/X/scripts")`
+4. **执行** → `skills_run(name="X", command="python scripts/xxx.py <args>")`
+
+**执行前必须用 skills_ls 确认脚本路径，严禁编造脚本名称。**
+
+## 工具权限与文件访问
+
+| 工具 | 操作范围 | 用途 |
+|-----|---------|------|
+| `skills_ls`, `skills_read`, `skills_write`, `skills_bash`, `skills_create` | 仅 /skills 目录 | 管理技能 |
+| `skills_run` | 可通过命令参数访问任意挂载路径 | 执行脚本处理外部文件 |
+
+**外部文件访问**：通过 `skills_run` 的命令参数传递绝对路径：
+```python
+skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
+```
+
+## 文件操作指南
+
+当需要读写外部文件时：
+1. **优先使用 IDE 提供的工作目录**（如 Workspace Path）确定文件位置
+2. **不确定时询问用户**期望的保存位置
+3. **使用绝对路径**传递给 skills_run 的脚本
+4. 技能目录 `/skills` 只存放代码，不要将输出文件保存到技能目录
+
+## 示例
+
+```python
+# 技能管理（仅操作 /skills 目录）
+skills_ls(path="skills")              # 列出所有技能
+skills_read(path="skills/pdf/SKILL.md")  # 读取技能说明
+skills_write(path="skills/my-skill/scripts/run.py", content="...")  # 添加脚本
+
+# 执行脚本处理外部文件（使用绝对路径）
+skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
+skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Desktop/file.pdf")
+```
+
+## 依赖管理
+
+技能的 `scripts/pyproject.toml` 声明依赖，`skills_run` 会自动用 uv 安装并在隔离环境中执行。
+
+如需添加依赖：
+```python
+skills_write(path="skills/X/scripts/pyproject.toml", content='''[project]
+name = "x-scripts"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["requests", "pandas"]
+[tool.uv]
+managed = true
+''')
+```
+
+## 创建新技能
+
+**必须**先阅读 skill-creator：
+```python
+skills_read(path="skills/skill-creator/SKILL.md")
+```
+**不要猜测结构，不要参考其他技能，不要跳过阅读直接创建。**
+</skills_system>

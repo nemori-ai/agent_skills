@@ -1,69 +1,69 @@
-# Usage Examples
+# 使用示例
 
-## Basic Usage
+## 基本用法
 
-### 1. Download File to Default Location
+### 1. 下载文件到默认位置
 ```bash
 python scripts/download.py https://example.com/file.pdf
 ```
 
-### 2. Specify Output File
+### 2. 指定输出文件
 ```bash
 python scripts/download.py https://example.com/document.pdf -o /path/to/save/document.pdf
 ```
 
-### 3. Show Detailed Progress
+### 3. 显示详细进度
 ```bash
 python scripts/download.py https://example.com/large_file.zip -v
 ```
 
-### 4. Overwrite Existing File
+### 4. 覆盖已存在的文件
 ```bash
 python scripts/download.py https://example.com/file.pdf -f
 ```
 
-## Advanced Usage
+## 高级用法
 
-### 5. Set Custom Timeout
+### 5. 设置自定义超时时间
 ```bash
 python scripts/download.py https://slow-server.com/file.pdf --timeout 60
 ```
 
-### 6. Set Custom User-Agent
+### 6. 设置自定义 User-Agent
 ```bash
 python scripts/download.py https://example.com/file.pdf --user-agent "MyDownloader/1.0"
 ```
 
-## Common Use Cases
+## 常见用例
 
-### Download GitHub Files
+### 下载 GitHub 文件
 ```bash
 python scripts/download.py https://raw.githubusercontent.com/user/repo/main/file.txt
 ```
 
-### Download PDF Documents
+### 下载 PDF 文档
 ```bash
 python scripts/download.py https://arxiv.org/pdf/1234.5678.pdf -o research_paper.pdf
 ```
 
-### Download Images
+### 下载图片
 ```bash
 python scripts/download.py https://example.com/image.jpg -v
 ```
 
-## Error Handling
+## 错误处理
 
-- **404 Error**: Check if URL is correct
-- **Timeout Error**: Increase `--timeout` value
-- **Permission Error**: Check if output directory has write permission
-- **File Exists**: Use `-f` parameter to force overwrite
+- **404 错误**: 检查 URL 是否正确
+- **超时错误**: 增加 `--timeout` 值
+- **权限错误**: 检查输出目录是否有写权限
+- **文件已存在**: 使用 `-f` 参数强制覆盖
 
-## Supported Protocols
+## 支持的协议
 
 - HTTP (http://)
 - HTTPS (https://)
 
-## Filename Handling
+## 文件名处理
 
-- If `-o` parameter is not specified, filename will be automatically extracted from URL
-- If URL has no filename, 'downloaded_file' will be used as default name
+- 如果不指定 `-o` 参数，将自动从 URL 中提取文件名
+- 如果 URL 没有文件名，将使用 'downloaded_file' 作为默认名称

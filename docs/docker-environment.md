@@ -1,8 +1,8 @@
-# Docker 环境
+# Docker Environment
 
-本文档介绍 Agent Skills Docker 镜像的预装环境和配置。
+This document describes the pre-installed environment and configuration of the Agent Skills Docker image.
 
-## 构建镜像
+## Build Image
 
 ```bash
 docker build -t agent-skills:latest -f docker_config/Dockerfile .
@@ -10,68 +10,68 @@ docker build -t agent-skills:latest -f docker_config/Dockerfile .
 
 ---
 
-## 预装工具
+## Pre-installed Tools
 
-### 系统工具
+### System Tools
 
-| 工具 | 用途 |
-|------|------|
-| git | 版本控制 |
-| curl | HTTP 请求 |
-| jq | JSON 处理 |
-| ripgrep (rg) | 快速搜索 |
-| poppler-utils | PDF 转图片（pdftotext, pdftoppm） |
-| qpdf | PDF 处理和修复 |
-| imagemagick | 图像处理 |
-| Node.js 22.x | JavaScript 运行时 |
+| Tool | Purpose |
+|------|---------|
+| git | Version control |
+| curl | HTTP requests |
+| jq | JSON processing |
+| ripgrep (rg) | Fast search |
+| poppler-utils | PDF to image (pdftotext, pdftoppm) |
+| qpdf | PDF processing and repair |
+| imagemagick | Image processing |
+| Node.js 22.x | JavaScript runtime |
 
-### Python 环境
+### Python Environment
 
 - Python 3.12+
-- uv（包管理器，用于依赖隔离）
+- uv (package manager for dependency isolation)
 
-### 预装 Python 库
+### Pre-installed Python Libraries
 
-| 库 | 用途 |
-|------|------|
-| pypdf | PDF 读写 |
-| pdfplumber | PDF 文本提取 |
-| pandas | 数据处理 |
-| pillow | 图像处理 |
-| requests | HTTP 请求 |
-| httpx | 异步 HTTP |
-| pyyaml | YAML 解析 |
-
----
-
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `SKILLS_WORKSPACE` | `/workspace` | 工作目录，用户项目挂载位置 |
-| `SKILLS_DIR` | `/skills` | 技能目录，技能包存储位置 |
-| `PYTHONUNBUFFERED` | `1` | Python 输出不缓冲 |
+| Library | Purpose |
+|---------|---------|
+| pypdf | PDF read/write |
+| pdfplumber | PDF text extraction |
+| pandas | Data processing |
+| pillow | Image processing |
+| requests | HTTP requests |
+| httpx | Async HTTP |
+| pyyaml | YAML parsing |
 
 ---
 
-## 目录结构
+## Environment Variables
 
-容器内的标准目录结构：
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SKILLS_WORKSPACE` | `/workspace` | Working directory, user project mount location |
+| `SKILLS_DIR` | `/skills` | Skills directory, skill package storage location |
+| `PYTHONUNBUFFERED` | `1` | Python output not buffered |
+
+---
+
+## Directory Structure
+
+Standard directory structure inside the container:
 
 ```
 /
-├── workspace/      # 用户项目（-v 挂载）
-├── skills/         # 技能目录（-v 挂载）
-└── app/            # Agent Skills 代码
+├── workspace/      # User project (-v mount)
+├── skills/         # Skills directory (-v mount)
+└── app/            # Agent Skills code
     └── agent_skills/
-        └── skills/ # 内置技能（fallback）
+        └── skills/ # Built-in skills (fallback)
 ```
 
 ---
 
-## 挂载方式
+## Mount Methods
 
-### 方式 1：挂载项目目录（推荐）
+### Method 1: Mount Project Directory (Recommended)
 
 ```bash
 docker run -i --rm \
@@ -80,10 +80,10 @@ docker run -i --rm \
   agent-skills:latest
 ```
 
-- `/workspace`：用户的项目目录
-- `/skills`：用户的技能目录（可创建和修改技能）
+- `/workspace`: User's project directory
+- `/skills`: User's skills directory (can create and modify skills)
 
-### 方式 2：挂载用户目录（完全访问）
+### Method 2: Mount User Directory (Full Access)
 
 ```bash
 docker run -i --rm \
@@ -92,9 +92,9 @@ docker run -i --rm \
   agent-skills:latest
 ```
 
-Agent 可以使用绝对路径访问用户目录下的任何文件。
+Agent can access any file in the user directory using absolute paths.
 
-### 方式 3：只读挂载
+### Method 3: Read-only Mount
 
 ```bash
 docker run -i --rm \
@@ -103,13 +103,13 @@ docker run -i --rm \
   agent-skills:latest
 ```
 
-项目目录只读，技能目录可写。
+Project directory is read-only, skills directory is writable.
 
 ---
 
-## 网络配置
+## Network Configuration
 
-默认情况下，容器使用主机网络：
+By default, the container uses host network:
 
 ```bash
 docker run -i --rm --network host \
@@ -117,7 +117,7 @@ docker run -i --rm --network host \
   agent-skills:latest
 ```
 
-如果需要限制网络访问：
+If network access needs to be restricted:
 
 ```bash
 docker run -i --rm --network none \
@@ -127,9 +127,9 @@ docker run -i --rm --network none \
 
 ---
 
-## 资源限制
+## Resource Limits
 
-### 内存限制
+### Memory Limit
 
 ```bash
 docker run -i --rm -m 2g \
@@ -137,7 +137,7 @@ docker run -i --rm -m 2g \
   agent-skills:latest
 ```
 
-### CPU 限制
+### CPU Limit
 
 ```bash
 docker run -i --rm --cpus 2 \
@@ -147,9 +147,9 @@ docker run -i --rm --cpus 2 \
 
 ---
 
-## 调试容器
+## Debugging Container
 
-### 进入容器 shell
+### Enter Container Shell
 
 ```bash
 docker run -it --rm \
@@ -157,13 +157,13 @@ docker run -it --rm \
   agent-skills:latest /bin/bash
 ```
 
-### 查看已安装的包
+### View Installed Packages
 
 ```bash
 docker run --rm agent-skills:latest pip list
 ```
 
-### 测试工具可用性
+### Test Tool Availability
 
 ```bash
 docker run --rm agent-skills:latest which python uv git rg
@@ -171,23 +171,23 @@ docker run --rm agent-skills:latest which python uv git rg
 
 ---
 
-## 自定义镜像
+## Custom Image
 
-如果需要额外的工具或库，可以基于 `agent-skills:latest` 创建自定义镜像：
+If additional tools or libraries are needed, create a custom image based on `agent-skills:latest`:
 
 ```dockerfile
 FROM agent-skills:latest
 
-# 安装额外的系统工具
+# Install additional system tools
 RUN apt-get update && apt-get install -y \
     your-tool \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装额外的 Python 库
+# Install additional Python libraries
 RUN pip install your-package
 ```
 
-构建自定义镜像：
+Build custom image:
 
 ```bash
 docker build -t my-agent-skills:latest -f MyDockerfile .
@@ -195,11 +195,11 @@ docker build -t my-agent-skills:latest -f MyDockerfile .
 
 ---
 
-## 常见问题
+## FAQ
 
-### 权限问题
+### Permission Issues
 
-如果遇到文件权限问题，可以指定用户：
+If you encounter file permission issues, specify user:
 
 ```bash
 docker run -i --rm -u $(id -u):$(id -g) \
@@ -207,15 +207,14 @@ docker run -i --rm -u $(id -u):$(id -g) \
   agent-skills:latest
 ```
 
-### 找不到命令
+### Command Not Found
 
-确保镜像是最新版本：
+Ensure image is the latest version:
 
 ```bash
 docker build --no-cache -t agent-skills:latest -f docker_config/Dockerfile .
 ```
 
-### 容器启动慢
+### Container Starts Slowly
 
-首次启动可能较慢（需要创建虚拟环境），后续启动会使用缓存。
-
+First startup may be slow (needs to create virtual environment), subsequent startups will use cache.
