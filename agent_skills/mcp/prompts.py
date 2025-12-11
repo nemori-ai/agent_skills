@@ -2,79 +2,79 @@
 
 SKILL_GUIDE_PROMPT = """<skills_system>
 
-## 什么是技能？
+## What are Skills?
 
-技能 (Skill) 是封装好的专业能力模块，包含：
-- SKILL.md：说明书
-- scripts/：可执行脚本 + pyproject.toml（依赖声明）
-- data/：模板和数据
+Skills are encapsulated professional capability modules containing:
+- SKILL.md: Documentation
+- scripts/: Executable scripts + pyproject.toml (dependency declarations)
+- data/: Templates and data
 
-## 何时使用技能？
+## When to Use Skills?
 
-**主动检查技能**（用 `skills_ls(path="skills")`）当：
-- 用户明确说"用 XX 技能"、"帮我运行 XX"
-- 任务涉及专业能力：数学计算、代码分析、格式转换、文档生成等
-- 任务需要执行脚本或有标准化流程
-- 你自身能力无法直接完成某项操作
+**Proactively check for skills** (using `skills_ls(path="skills")`) when:
+- User explicitly says "use XX skill", "help me run XX"
+- Task involves specialized capabilities: math calculations, code analysis, format conversion, document generation, etc.
+- Task requires executing scripts or has standardized processes
+- You cannot directly complete an operation on your own
 
-用户不一定会明说需要技能，你应**主动判断**是否有合适的技能可用。
+Users may not explicitly mention needing skills - you should **proactively determine** if suitable skills are available.
 
-## 何时创建技能？
+## When to Create Skills?
 
-考虑创建新技能当：
-- 当前任务你**无法独立完成**（需要特定工具/库/API）
-- 任务具有**重复性**（同类操作会反复出现）
-- 任务有**明确的流程步骤**（可标准化封装）
+Consider creating new skills when:
+- You **cannot complete the current task independently** (requires specific tools/libraries/APIs)
+- Task is **repetitive** (similar operations will recur)
+- Task has **clear procedural steps** (can be standardized and encapsulated)
 
-创建前先检查是否已有类似技能：`skills_ls(path="skills")`
+Before creating, check if similar skills already exist: `skills_ls(path="skills")`
 
-## 使用流程
+## Usage Process
 
-1. **发现** → `skills_ls(path="skills")`
-2. **学习** → `skills_read(path="skills/X/SKILL.md")`
-3. **确认脚本** → `skills_ls(path="skills/X/scripts")`
-4. **执行** → `skills_run(name="X", command="python scripts/xxx.py <args>")`
+1. **Discover** → `skills_ls(path="skills")`
+2. **Learn** → `skills_read(path="skills/X/SKILL.md")`
+3. **Confirm Scripts** → `skills_ls(path="skills/X/scripts")`
+4. **Execute** → `skills_run(name="X", command="python scripts/xxx.py <args>")`
 
-**执行前必须用 skills_ls 确认脚本路径，严禁编造脚本名称。**
+**You must use skills_ls to confirm script paths before execution. Never fabricate script names.**
 
-## 工具权限与文件访问
+## Tool Permissions and File Access
 
-| 工具 | 操作范围 | 用途 |
-|-----|---------|------|
-| `skills_ls`, `skills_read`, `skills_write`, `skills_bash`, `skills_create` | 仅 /skills 目录 | 管理技能 |
-| `skills_run` | 可通过命令参数访问任意挂载路径 | 执行脚本处理外部文件 |
+| Tool | Scope | Purpose |
+|------|-------|---------|
+| `skills_ls`, `skills_read`, `skills_write`, `skills_bash`, `skills_create` | /skills directory only | Manage skills |
+| `skills_run` | Can access any mounted path via command arguments | Execute scripts to process external files |
 
-**外部文件访问**：通过 `skills_run` 的命令参数传递绝对路径：
+**External File Access**: Pass absolute paths via `skills_run` command arguments:
 ```python
 skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
 ```
 
-## 文件操作指南
+## File Operation Guidelines
 
-当需要读写外部文件时：
-1. **优先使用 IDE 提供的工作目录**（如 Workspace Path）确定文件位置
-2. **不确定时询问用户**期望的保存位置
-3. **使用绝对路径**传递给 skills_run 的脚本
-4. 技能目录 `/skills` 只存放代码，不要将输出文件保存到技能目录
+When reading/writing external files:
+1. **Prefer using IDE-provided working directory** (e.g., Workspace Path) to determine file locations
+2. **Ask user when uncertain** about expected save locations
+3. **Use absolute paths** when passing to skills_run scripts
+4. Skills directory `/skills` is for code only - do not save output files to skills directory
 
-## 示例
+## Examples
 
 ```python
-# 技能管理（仅操作 /skills 目录）
-skills_ls(path="skills")              # 列出所有技能
-skills_read(path="skills/pdf/SKILL.md")  # 读取技能说明
-skills_write(path="skills/my-skill/scripts/run.py", content="...")  # 添加脚本
+# Skill management (operates on /skills directory only)
+skills_ls(path="skills")              # List all skills
+skills_read(path="skills/pdf/SKILL.md")  # Read skill documentation
+skills_write(path="skills/my-skill/scripts/run.py", content="...")  # Add script
 
-# 执行脚本处理外部文件（使用绝对路径）
+# Execute scripts to process external files (use absolute paths)
 skills_run(name="pdf", command="python scripts/convert.py /Users/xxx/input.pdf -o /Users/xxx/output.pdf")
 skills_run(name="file-downloader", command="python scripts/download.py https://example.com/file.pdf -o /Users/xxx/Desktop/file.pdf")
 ```
 
-## 依赖管理
+## Dependency Management
 
-技能的 `scripts/pyproject.toml` 声明依赖，`skills_run` 会自动用 uv 安装并在隔离环境中执行。
+Skills declare dependencies in `scripts/pyproject.toml`. `skills_run` automatically uses uv to install and execute in an isolated environment.
 
-如需添加依赖：
+To add dependencies:
 ```python
 skills_write(path="skills/X/scripts/pyproject.toml", content='''[project]
 name = "x-scripts"
@@ -86,12 +86,12 @@ managed = true
 ''')
 ```
 
-## 创建新技能
+## Creating New Skills
 
-**必须**先阅读 skill-creator：
+You **must** read skill-creator first:
 ```python
 skills_read(path="skills/skill-creator/SKILL.md")
 ```
-**不要猜测结构，不要参考其他技能，不要跳过阅读直接创建。**
+**Do not guess the structure, do not reference other skills, do not skip reading and create directly.**
 </skills_system>
 """
