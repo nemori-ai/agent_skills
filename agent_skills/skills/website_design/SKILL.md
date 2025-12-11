@@ -22,6 +22,7 @@ This skill provides frontend developers and designers with **carefully crafted d
 |-------|-------------|--------------|
 | **Monochrome** | Minimalist black & white style, pure black and white, large typography, line dividers | High-end brands, fashion magazines, art galleries, luxury websites |
 | **Bauhaus** | Bauhaus geometric style, primary colors (red, blue, yellow), hard shadows, geometric shapes | Creative agencies, design studios, art exhibitions, architecture websites |
+| **Corporate Trust** | Modern enterprise SaaS aesthetic, indigo-violet gradients, dimensional depth, isometric elements | SaaS products, enterprise platforms, tech startups, B2B websites |
 
 ## Usage
 
@@ -35,6 +36,9 @@ skills_read(path="skills/website_design/docs/monochrome.md")
 
 # Bauhaus geometric style
 skills_read(path="skills/website_design/docs/bauhaus.md")
+
+# Corporate Trust modern SaaS style
+skills_read(path="skills/website_design/docs/modern_dark.md")
 ```
 
 ### Document Structure
@@ -71,6 +75,16 @@ Shadows: Hard shadows with 4px/8px offset
 Features: Geometric shape decorations, color block backgrounds, 45° rotated elements, constructivism
 ```
 
+### Corporate Trust
+
+```
+Colors: Indigo #4F46E5 + Violet #7C3AED + Slate backgrounds
+Typography: Plus Jakarta Sans (geometric sans-serif)
+Border Radius: rounded-xl (12px) for cards, rounded-full for buttons
+Shadows: Colored shadows with blue/purple tints
+Features: Isometric 3D transforms, gradient text, blur orbs, elevated cards on hover
+```
+
 ## Tech Stack Compatibility
 
 These design systems are compatible with various frontend tech stacks:
@@ -95,5 +109,6 @@ website_design/
 ├── SKILL.md              # This file - Skill entry guide
 └── docs/
     ├── monochrome.md     # Monochrome minimalist black & white style complete specification
-    └── bauhaus.md        # Bauhaus style complete specification
+    ├── bauhaus.md        # Bauhaus style complete specification
+    └── modern_dark.md    # Corporate Trust modern SaaS style complete specification
 ```
