@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
+agent-skills = "agent_skills.cli.main:main"
 agent-skills-server = "agent_skills.mcp.server:main"
 
 [project.optional-dependencies]

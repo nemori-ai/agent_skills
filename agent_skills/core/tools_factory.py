@@ -2,6 +2,7 @@ import asyncio
 import re
 import json
 import yaml
+import posixpath
 from pathlib import Path
 from typing import List, Optional, Any, Dict
 
@@ -49,18 +50,43 @@ class DockerToolFactory:
         if self.host_workspace is not None:
             return self.host_workspace
         return self.host_skills
+    
+    def _ensure_within_root(self, root: Path, target: Path, *, user_input: str) -> Path:
+        """Resolve and ensure target stays within root (blocks ../ and symlink escapes)."""
+        root_resolved = root.resolve(strict=False)
+        target_resolved = target.resolve(strict=False)
+        if not target_resolved.is_relative_to(root_resolved):
+            raise ValueError(
+                "越界访问被禁止。\n"
+                f"输入: {user_input}\n"
+                f"允许根目录: {root_resolved}\n"
+                f"解析后路径: {target_resolved}"
+            )
+        return target_resolved
+    
+    def _resolve_in_root(self, root: Path, rel: str, *, user_input: str) -> Path:
+        """Resolve a subpath under root, preventing escapes."""
+        if not rel:
+            return root.resolve(strict=False)
+        return self._ensure_within_root(root, root / rel, user_input=user_input)
+    
+    def _resolve_in_skill_root(self, skill_root: Path, remaining: str, *, user_input: str) -> Path:
+        """Resolve a subpath within a specific skill directory, preventing escapes."""
+        if not remaining:
+            return skill_root.resolve(strict=False)
+        return self._ensure_within_root(skill_root, skill_root / remaining, user_input=user_input)
 
     def resolve_host_path(self, path: str) -> Path:
         """Resolve virtual path to Host filesystem path."""
         path = path.strip()
         
         if not path or path == "/":
-            return self._get_default_root()
+            return self._get_default_root().resolve(strict=False)
         
         if path == "workspace":
             if self.host_workspace is None:
                 raise ValueError("Workspace not configured. Use skills/ paths instead.")
-            return self.host_workspace
+            return self.host_workspace.resolve(strict=False)
 
         if path.startswith("skills/"):
             # Handle specific skill lookup
@@ -72,18 +98,19 @@ class DockerToolFactory:
                 if info:
                     skill_root = Path(info.path)
                     remaining = "/".join(parts[2:])
-                    return skill_root / remaining
+                    return self._resolve_in_skill_root(skill_root, remaining, user_input=path)
             
             # Fallback to main skills dir
-            return self.host_skills / path[7:]
+            return self._resolve_in_root(self.host_skills, path[7:], user_input=path)
 
         if path.startswith("workspace/"):
             if self.host_workspace is None:
                 raise ValueError("Workspace not configured. Use skills/ paths instead.")
-            return self.host_workspace / path[10:]
+            return self._resolve_in_root(self.host_workspace, path[10:], user_input=path)
 
         if path.startswith("./"):
-            return self._get_default_root() / path[2:]
+            root = self._get_default_root()
+            return self._resolve_in_root(root, path[2:], user_input=path)
 
         if path.startswith("/"):
             # If absolute, check if it falls within allowed mounts
@@ -93,15 +120,17 @@ class DockerToolFactory:
                 if self.host_workspace is None:
                     raise ValueError("Workspace not configured. Use /skills paths instead.")
                 rel = str(p)[len(WORKSPACE_MOUNT_POINT):].lstrip("/")
-                return self.host_workspace / rel
+                return self._resolve_in_root(self.host_workspace, rel, user_input=path)
             if str(p).startswith(SKILLS_MOUNT_POINT):
                 rel = str(p)[len(SKILLS_MOUNT_POINT):].lstrip("/")
-                return self.host_skills / rel
+                return self._resolve_in_root(self.host_skills, rel, user_input=path)
             
             # Unknown absolute path - map to default root
-            return self._get_default_root() / path.lstrip("/")
+            root = self._get_default_root()
+            return self._resolve_in_root(root, path.lstrip("/"), user_input=path)
 
-        return self._get_default_root() / path
+        root = self._get_default_root()
+        return self._resolve_in_root(root, path, user_input=path)
 
     def resolve_container_path(self, path: str) -> str:
         """Resolve virtual path to Container filesystem path."""
@@ -119,20 +148,51 @@ class DockerToolFactory:
             return WORKSPACE_MOUNT_POINT
 
         if path.startswith("skills/"):
-            return f"{SKILLS_MOUNT_POINT}/{path[7:]}"
+            raw = f"{SKILLS_MOUNT_POINT}/{path[7:]}"
+            norm = posixpath.normpath(raw)
+            if norm == SKILLS_MOUNT_POINT or norm.startswith(f"{SKILLS_MOUNT_POINT}/"):
+                return norm
+            raise ValueError(f"cwd 越界访问被禁止: {path}")
 
         if path.startswith("workspace/"):
             if not self.has_workspace:
-                return f"{SKILLS_MOUNT_POINT}/{path[10:]}"
-            return f"{WORKSPACE_MOUNT_POINT}/{path[10:]}"
+                raw = f"{SKILLS_MOUNT_POINT}/{path[10:]}"
+                norm = posixpath.normpath(raw)
+                if norm == SKILLS_MOUNT_POINT or norm.startswith(f"{SKILLS_MOUNT_POINT}/"):
+                    return norm
+                raise ValueError(f"cwd 越界访问被禁止: {path}")
+            raw = f"{WORKSPACE_MOUNT_POINT}/{path[10:]}"
+            norm = posixpath.normpath(raw)
+            if norm == WORKSPACE_MOUNT_POINT or norm.startswith(f"{WORKSPACE_MOUNT_POINT}/"):
+                return norm
+            raise ValueError(f"cwd 越界访问被禁止: {path}")
 
         if path.startswith("./"):
-            return f"{default_mount}/{path[2:]}"
+            raw = f"{default_mount}/{path[2:]}"
+            norm = posixpath.normpath(raw)
+            if norm == default_mount or norm.startswith(f"{default_mount}/"):
+                return norm
+            raise ValueError(f"cwd 越界访问被禁止: {path}")
         
         if path.startswith("/"):
-            return path # Absolute path in container
+            norm = posixpath.normpath(path)
+            allowed = (
+                norm == WORKSPACE_MOUNT_POINT
+                or norm.startswith(f"{WORKSPACE_MOUNT_POINT}/")
+                or norm == SKILLS_MOUNT_POINT
+                or norm.startswith(f"{SKILLS_MOUNT_POINT}/")
+            )
+            if allowed:
+                return norm
+            raise ValueError(
+                "不允许使用容器内外部绝对路径作为 cwd。请使用 workspace/... 或 skills/... 的虚拟路径。"
+            )
 
-        return f"{default_mount}/{path}"
+        raw = f"{default_mount}/{path}"
+        norm = posixpath.normpath(raw)
+        if norm == default_mount or norm.startswith(f"{default_mount}/"):
+            return norm
+        raise ValueError(f"cwd 越界访问被禁止: {path}")
 
     def get_tools(self) -> List[BaseTool]:
         
@@ -321,7 +381,10 @@ class DockerToolFactory:
         def skills_bash(command: str, cwd: str = "", timeout: int = 60) -> str:
             """Execute shell command in workspace."""
             # Resolve cwd to Container Path
-            work_dir = self.resolve_container_path(cwd)
+            try:
+                work_dir = self.resolve_container_path(cwd)
+            except ValueError as e:
+                return f"Error: {e}"
             
             output, code = self.runner.run_command(command, cwd=work_dir, timeout=timeout)
             

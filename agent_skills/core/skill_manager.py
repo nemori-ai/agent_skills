@@ -395,10 +395,11 @@ class SkillManager:
 
         try:
             # Validate relative path prevents escaping skill dir
-            target_file = (skill_path / file_path).resolve()
+            skill_root = skill_path.resolve(strict=False)
+            target_file = (skill_path / file_path).resolve(strict=False)
             
             # Security check: ensure target_file is inside skill_path
-            if not str(target_file).startswith(str(skill_path.resolve())):
+            if not target_file.is_relative_to(skill_root):
                 return ToolResult.error(
                     f"skill add_file: path '{file_path}' attempts to access outside skill directory"
                 )
@@ -500,10 +501,11 @@ class SkillManager:
             return ToolResult.error(f"skill read_file: skill '{name}' not found")
 
         try:
-            target_file = (skill_path / file_path).resolve()
+            skill_root = skill_path.resolve(strict=False)
+            target_file = (skill_path / file_path).resolve(strict=False)
             
             # Security check
-            if not str(target_file).startswith(str(skill_path.resolve())):
+            if not target_file.is_relative_to(skill_root):
                 return ToolResult.error(
                     f"skill read_file: path '{file_path}' attempts to access outside skill directory"
                 )

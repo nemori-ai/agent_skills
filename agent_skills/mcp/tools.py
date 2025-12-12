@@ -38,6 +38,35 @@ from agent_skills.mcp.prompts import SKILL_GUIDE_PROMPT
 SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", "/skills"))
 
 
+def _ensure_within_root(root: Path, target: Path, *, user_input: str) -> Path:
+    """Resolve and ensure target stays within root.
+
+    This blocks path traversal like "../" and symlink escapes.
+    """
+    root_resolved = root.resolve(strict=False)
+    target_resolved = target.resolve(strict=False)
+    if not target_resolved.is_relative_to(root_resolved):
+        raise ValueError(
+            "越界访问被禁止。\n"
+            f"输入: {user_input}\n"
+            f"允许根目录: {root_resolved}\n"
+            f"解析后路径: {target_resolved}"
+        )
+    return target_resolved
+
+
+def _resolve_in_skill_root(skill_root: Path, remaining: str, *, user_input: str) -> Path:
+    """Resolve a subpath within a specific skill directory, preventing escapes."""
+    skill_root_resolved = skill_root.resolve(strict=False)
+    if not remaining:
+        return skill_root_resolved
+    return _ensure_within_root(
+        skill_root_resolved,
+        skill_root_resolved / remaining,
+        user_input=user_input,
+    )
+
+
 def resolve_path(path: str) -> Path:
     """Resolve a virtual path to an actual filesystem path.
     
@@ -62,22 +91,25 @@ def resolve_path(path: str) -> Path:
     
     # Handle empty path
     if not path or path == "/":
-        return SKILLS_DIR
+        return SKILLS_DIR.resolve(strict=False)
     
     # Virtual path prefix: skills/
     if path.startswith("skills/"):
         # Remove "skills/" prefix and resolve against SKILLS_DIR
-        return SKILLS_DIR / path[7:]  # len("skills/") = 7
+        candidate = SKILLS_DIR / path[7:]  # len("skills/") = 7
+        return _ensure_within_root(SKILLS_DIR, candidate, user_input=path)
     
     # Relative path (./xxx)
     if path.startswith("./"):
-        return SKILLS_DIR / path[2:]
+        candidate = SKILLS_DIR / path[2:]
+        return _ensure_within_root(SKILLS_DIR, candidate, user_input=path)
     
     # Absolute path - only allow paths within SKILLS_DIR
     if path.startswith("/"):
         skills_dir_str = str(SKILLS_DIR)
         if path.startswith(skills_dir_str):
-            return Path(path)
+            candidate = Path(path)
+            return _ensure_within_root(SKILLS_DIR, candidate, user_input=path)
         else:
             raise ValueError(
                 f"外部绝对路径不允许: {path}\n"
@@ -86,7 +118,8 @@ def resolve_path(path: str) -> Path:
             )
     
     # Default: treat as relative to skills directory
-    return SKILLS_DIR / path
+    candidate = SKILLS_DIR / path
+    return _ensure_within_root(SKILLS_DIR, candidate, user_input=path)
 
 
 def get_path_info() -> dict[str, str]:
@@ -399,7 +432,10 @@ def register_tools(
             if not skill_path:
                 return f"Error: skill '{skill_name}' not found"
             remaining = "/".join(parts[2:])
-            target = skill_path / remaining if remaining else skill_path
+            try:
+                target = _resolve_in_skill_root(skill_path, remaining, user_input=actual_path)
+            except ValueError as e:
+                return f"Error: {e}"
         else:
             # Use generic path resolution
             try:
@@ -469,7 +505,10 @@ def register_tools(
                 return f"Error: skill '{skill_name}' not found"
             
             remaining = "/".join(parts[2:]) if len(parts) > 2 else "SKILL.md"
-            target = skill_path / remaining
+            try:
+                target = _resolve_in_skill_root(skill_path, remaining, user_input=path)
+            except ValueError as e:
+                return f"Error: {e}"
         else:
             # Use generic path resolution for all other paths
             try:
@@ -525,7 +564,10 @@ def register_tools(
                 return f"Error: skill '{skill_name}' not found"
             
             remaining = "/".join(parts[2:])
-            target = skill_path / remaining
+            try:
+                target = _resolve_in_skill_root(skill_path, remaining, user_input=path)
+            except ValueError as e:
+                return f"Error: {e}"
         else:
             # Use generic path resolution
             try:
@@ -648,7 +690,10 @@ def register_tools(
                 skill_path = skill_manager.get_skill_path(skill_name)
                 if skill_path:
                     remaining = "/".join(parts[2:]) if len(parts) > 2 else ""
-                    work_dir = skill_path / remaining if remaining else skill_path
+                    try:
+                        work_dir = _resolve_in_skill_root(skill_path, remaining, user_input=cwd)
+                    except ValueError as e:
+                        return f"Error: {e}"
                 else:
                     return f"Error: skill '{skill_name}' not found"
             else:
@@ -658,7 +703,7 @@ def register_tools(
                 except ValueError as e:
                     return f"Error: {e}"
         else:
-            work_dir = SKILLS_DIR
+            work_dir = SKILLS_DIR.resolve(strict=False)
         
         if not work_dir.exists():
             try:

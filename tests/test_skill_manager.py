@@ -270,3 +270,31 @@ description: A skill for file testing
             content="test",
         )
         assert result.status == ToolStatus.ERROR
+
+    def test_add_file_rejects_path_traversal(
+        self, skill_manager: SkillManager, temp_workspace: Path
+    ) -> None:
+        """Reject attempts to write outside a skill directory via ../ traversal."""
+        # Create a skill first
+        skills_dir = temp_workspace / "skills" / "safe-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / SKILL_FILE_NAME).write_text(
+            """---
+name: safe-skill
+description: A skill for traversal testing
+---
+
+# Safe Skill
+""",
+            encoding="utf-8",
+        )
+
+        # Attempt to escape the skill directory
+        result = skill_manager.add_file(
+            name="safe-skill",
+            file_path="../escaped.txt",
+            content="nope",
+        )
+        assert result.status == ToolStatus.ERROR
+        # Ensure the escaped file was NOT created
+        assert not (temp_workspace / "skills" / "escaped.txt").exists()
