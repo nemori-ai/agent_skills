@@ -20,6 +20,9 @@ from typing import Any
 # Default skills directory
 DEFAULT_SKILLS_DIR = Path.home() / ".agent-skills" / "skills"
 
+# Claude Code personal skills directory (for sync compatibility)
+CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+
 # Metadata file name for installed skills
 INSTALLED_METADATA_FILE = ".installed.json"
 
@@ -66,6 +69,108 @@ class SkillInstaller:
     def _ensure_skills_dir(self) -> None:
         """Ensure the skills directory exists."""
         self.skills_dir.mkdir(parents=True, exist_ok=True)
+
+    def sync_from_claude(
+        self,
+        source_dir: Path | str | None = None,
+        *,
+        overwrite: bool = False,
+        dry_run: bool = False,
+    ) -> InstallResult:
+        """
+        Sync Claude Code personal skills from ~/.claude/skills into agent-skills directory.
+
+        This copies each subdirectory that contains a SKILL.md.
+
+        Args:
+            source_dir: Claude skills directory. Defaults to ~/.claude/skills
+            overwrite: If True, overwrite existing skills in target directory
+            dry_run: If True, do not copy anything; only report actions
+        """
+        self._ensure_skills_dir()
+
+        src = Path(source_dir).expanduser().resolve() if source_dir else CLAUDE_SKILLS_DIR
+        if not src.exists() or not src.is_dir():
+            return InstallResult(
+                success=False,
+                message=f"Claude skills directory not found: {src}",
+            )
+
+        skill_dirs: list[Path] = []
+        for item in src.iterdir():
+            if not item.is_dir() or item.name.startswith("."):
+                continue
+            if (item / SKILL_FILE_NAME).exists():
+                skill_dirs.append(item)
+
+        if not skill_dirs:
+            return InstallResult(
+                success=True,
+                message=f"No skills found in Claude skills directory: {src}",
+                skill_path=str(self.skills_dir),
+            )
+
+        copied: list[str] = []
+        skipped: list[str] = []
+        overwritten_list: list[str] = []
+        failed: list[str] = []
+
+        for skill_dir in sorted(skill_dirs, key=lambda p: p.name):
+            skill_name = skill_dir.name
+            target_path = self.skills_dir / skill_name
+
+            if target_path.exists():
+                if not overwrite:
+                    skipped.append(skill_name)
+                    continue
+                overwritten_list.append(skill_name)
+                if not dry_run:
+                    try:
+                        shutil.rmtree(target_path)
+                    except Exception:
+                        failed.append(skill_name)
+                        continue
+
+            if dry_run:
+                copied.append(skill_name)
+                continue
+
+            try:
+                shutil.copytree(skill_dir, target_path)
+                # Mark as installed via CLI tooling for listing/traceability
+                self._write_metadata(
+                    target_path,
+                    source=f"claude:{src}",
+                    ref=None,
+                    commit=None,
+                    extra={"claude_source": str(skill_dir)},
+                )
+                copied.append(skill_name)
+            except Exception:
+                failed.append(skill_name)
+                shutil.rmtree(target_path, ignore_errors=True)
+
+        parts: list[str] = []
+        if dry_run:
+            parts.append("Dry-run complete.")
+        parts.append(f"Copied: {len(copied)}")
+        if overwritten_list:
+            parts.append(f"Overwritten: {len(overwritten_list)}")
+        if skipped:
+            parts.append(f"Skipped: {len(skipped)}")
+        if failed:
+            parts.append(f"Failed: {len(failed)}")
+
+        message = " ".join(parts)
+        if failed:
+            message += f" Failed skills: {', '.join(failed)}"
+
+        return InstallResult(
+            success=len(failed) == 0,
+            message=message,
+            skill_name=copied[0] if copied else None,
+            skill_path=str(self.skills_dir),
+        )
 
     def _extract_repo_name(self, url: str) -> str:
         """
@@ -132,18 +237,22 @@ class SkillInstaller:
         skill_path: Path,
         source: str,
         ref: str | None,
-        commit: str,
+        commit: str | None,
         repo_path: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         """Write installation metadata to skill directory."""
         metadata = {
             "source": source,
             "ref": ref,
             "installed_at": datetime.now(timezone.utc).isoformat(),
-            "commit": commit,
         }
+        if commit is not None:
+            metadata["commit"] = commit
         if repo_path:
             metadata["path"] = repo_path
+        if extra:
+            metadata.update(extra)
         metadata_file = skill_path / INSTALLED_METADATA_FILE
         metadata_file.write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False),
@@ -364,7 +473,9 @@ class SkillInstaller:
                         f"Expected {SKILL_FILE_NAME} at root or in subdirectories.",
                     )
 
-                installed_skills: list[str] = []
+                # Phase 1: Pre-check all skills to ensure atomic installation
+                skills_to_install: list[tuple[Path, str, Path]] = []
+                seen_names: set[str] = set()
 
                 for skill_dir in skill_dirs:
                     # Determine skill name
@@ -377,6 +488,13 @@ class SkillInstaller:
                         # Multi-skill repo, use directory name
                         skill_name = skill_dir.name
 
+                    if skill_name in seen_names:
+                        return InstallResult(
+                            success=False,
+                            message=f"Duplicate skill name '{skill_name}' found in repository.",
+                        )
+                    seen_names.add(skill_name)
+
                     # Check if skill already exists
                     target_path = self.skills_dir / skill_name
                     if target_path.exists():
@@ -386,24 +504,37 @@ class SkillInstaller:
                             f"Use 'uninstall' first to remove it.",
                         )
 
-                    # Remove .git directory before copying
-                    git_dir = skill_dir / ".git" if skill_dir == tmp_path else tmp_path / ".git"
-                    if skill_dir == tmp_path:
-                        # Single skill repo - remove .git from the skill dir
-                        shutil.rmtree(tmp_path / ".git", ignore_errors=True)
+                    skills_to_install.append((skill_dir, skill_name, target_path))
 
-                    # Copy skill to target directory
-                    if skill_dir == tmp_path:
-                        # Single skill - copy entire repo (minus .git)
-                        shutil.copytree(skill_dir, target_path)
-                    else:
-                        # Multi-skill - copy just the skill subdirectory
-                        shutil.copytree(skill_dir, target_path)
+                # Phase 2: All checks passed, now install all skills (with rollback on failure)
+                installed_skills: list[str] = []
+                created_paths: list[Path] = []
 
-                    # Write metadata
-                    self._write_metadata(target_path, url, ref, commit, repo_path=path)
+                # Remove .git directory before copying so installed skills are clean
+                shutil.rmtree(tmp_path / ".git", ignore_errors=True)
 
-                    installed_skills.append(skill_name)
+                try:
+                    for skill_dir, skill_name, target_path in skills_to_install:
+                        # Copy skill to target directory
+                        if skill_dir == tmp_path:
+                            # Single skill - copy entire repo (minus .git)
+                            shutil.copytree(skill_dir, target_path)
+                        else:
+                            # Multi-skill - copy just the skill subdirectory
+                            shutil.copytree(skill_dir, target_path)
+
+                        # Write metadata
+                        self._write_metadata(target_path, url, ref, commit, repo_path=path)
+
+                        created_paths.append(target_path)
+                        installed_skills.append(skill_name)
+                except Exception as e:
+                    for p in created_paths:
+                        shutil.rmtree(p, ignore_errors=True)
+                    return InstallResult(
+                        success=False,
+                        message=f"Installation failed: {e}",
+                    )
 
                 if len(installed_skills) == 1:
                     return InstallResult(

@@ -21,6 +21,7 @@ uv sync
 | `agent-skills install <url>` | 从 Git 仓库安装 skill |
 | `agent-skills uninstall <name>` | 卸载已安装的 skill |
 | `agent-skills list` | 列出所有 skills |
+| `agent-skills sync-claude` | 将 Claude Code 的个人 skills 同步到 agent-skills |
 
 ---
 
@@ -212,6 +213,49 @@ Skills in /Users/xxx/.agent-skills/skills:
 
 Total: 3 skill(s), 1 installed via CLI
 ```
+
+---
+
+## sync-claude - 同步 Claude Code 个人 Skills
+
+将 Claude Code 用户在 `~/.claude/skills/` 下的个人 skills 同步到 agent-skills 的 skills 目录中，方便复用 Claude 的生态（例如你已经在 Claude Code 里维护了一套技能）。
+
+### 语法
+
+```bash
+agent-skills sync-claude [options]
+```
+
+### 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--source, -s <path>` | Claude skills 目录（默认：`~/.claude/skills/`） |
+| `--overwrite` | 如果目标目录已存在同名 skill，则覆盖 |
+| `--dry-run` | 仅显示将执行的操作，不实际复制文件 |
+| `--dir, -d <path>` | agent-skills 的 skills 目录（同步目标目录） |
+
+### 示例
+
+```bash
+# 同步 Claude Code 个人 skills 到默认目录
+agent-skills sync-claude
+
+# 同步到项目本地 skills 目录（例如给 MCP 挂载用）
+agent-skills sync-claude --dir ./skills
+
+# 覆盖同名技能
+agent-skills sync-claude --overwrite
+
+# 只预览，不做实际复制
+agent-skills sync-claude --dry-run
+```
+
+### 同步规则
+
+- 会扫描 `--source` 目录下的**一级子目录**
+- 仅同步包含 `SKILL.md` 的目录
+- 同步后会写入 `.installed.json` 元数据，`source` 会标记为 `claude:<source_dir>`，用于追踪来源
 
 ---
 

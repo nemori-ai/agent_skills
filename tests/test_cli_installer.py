@@ -226,6 +226,142 @@ class TestSkillInstallerInstall:
                 assert result.success is False
                 assert "already exists" in result.message
 
+    def test_install_multi_skill_atomic_failure(self, tmp_path: Path) -> None:
+        """Test that multi-skill install is atomic - no partial installs.
+
+        If one skill already exists, none should be installed.
+        """
+        installer = SkillInstaller(skills_dir=tmp_path)
+
+        # Create an existing skill (skill-b)
+        existing_skill = tmp_path / "skill-b"
+        existing_skill.mkdir()
+        (existing_skill / SKILL_FILE_NAME).write_text("---\nname: skill-b\n---\n")
+
+        with patch.object(installer, "_run_git_command") as mock_git:
+            with patch("tempfile.TemporaryDirectory") as mock_tmpdir:
+                mock_tmp = tmp_path / "mock_tmp"
+                mock_tmp.mkdir()
+                mock_repo = mock_tmp / "repo"
+                mock_repo.mkdir()
+
+                # Create multi-skill repo with skill-a and skill-b
+                skill_a = mock_repo / "skill-a"
+                skill_a.mkdir()
+                (skill_a / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+
+                skill_b = mock_repo / "skill-b"
+                skill_b.mkdir()
+                (skill_b / SKILL_FILE_NAME).write_text("---\nname: skill-b\n---\n")
+
+                mock_tmpdir.return_value.__enter__.return_value = str(mock_tmp)
+                mock_git.return_value = MagicMock(stdout="abc123\n")
+
+                result = installer.install("https://github.com/user/skills-collection.git")
+
+                # Should fail because skill-b exists
+                assert result.success is False
+                assert "skill-b" in result.message
+                assert "already exists" in result.message
+
+                # skill-a should NOT have been installed (atomic behavior)
+                assert not (tmp_path / "skill-a").exists()
+
+
+class TestSyncFromClaude:
+    """Tests for syncing Claude Code personal skills."""
+
+    def test_sync_from_claude_copies_skills_and_writes_metadata(self, tmp_path: Path) -> None:
+        source = tmp_path / "claude_skills"
+        source.mkdir()
+
+        skill_a = source / "skill-a"
+        skill_a.mkdir()
+        (skill_a / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+        (skill_a / "note.txt").write_text("from-claude-a")
+
+        skill_b = source / "skill-b"
+        skill_b.mkdir()
+        (skill_b / SKILL_FILE_NAME).write_text("---\nname: skill-b\n---\n")
+
+        target = tmp_path / "agent_skills_dir"
+        installer = SkillInstaller(skills_dir=target)
+
+        result = installer.sync_from_claude(source_dir=source)
+
+        assert result.success is True
+        assert (target / "skill-a" / SKILL_FILE_NAME).exists()
+        assert (target / "skill-a" / "note.txt").read_text() == "from-claude-a"
+        assert (target / "skill-b" / SKILL_FILE_NAME).exists()
+
+        metadata = json.loads((target / "skill-a" / INSTALLED_METADATA_FILE).read_text())
+        assert metadata["source"].startswith("claude:")
+        assert metadata["claude_source"] == str(source / "skill-a")
+
+    def test_sync_from_claude_skips_existing_by_default(self, tmp_path: Path) -> None:
+        source = tmp_path / "claude_skills"
+        source.mkdir()
+
+        skill_a = source / "skill-a"
+        skill_a.mkdir()
+        (skill_a / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+        (skill_a / "from_source.txt").write_text("new")
+
+        target = tmp_path / "agent_skills_dir"
+        target.mkdir()
+
+        existing = target / "skill-a"
+        existing.mkdir()
+        (existing / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+        (existing / "marker.txt").write_text("keep")
+
+        installer = SkillInstaller(skills_dir=target)
+        result = installer.sync_from_claude(source_dir=source)
+
+        assert result.success is True
+        assert (existing / "marker.txt").read_text() == "keep"
+        assert not (existing / "from_source.txt").exists()
+
+    def test_sync_from_claude_overwrite(self, tmp_path: Path) -> None:
+        source = tmp_path / "claude_skills"
+        source.mkdir()
+
+        skill_a = source / "skill-a"
+        skill_a.mkdir()
+        (skill_a / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+        (skill_a / "from_source.txt").write_text("new")
+
+        target = tmp_path / "agent_skills_dir"
+        target.mkdir()
+
+        existing = target / "skill-a"
+        existing.mkdir()
+        (existing / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+        (existing / "marker.txt").write_text("old")
+
+        installer = SkillInstaller(skills_dir=target)
+        result = installer.sync_from_claude(source_dir=source, overwrite=True)
+
+        assert result.success is True
+        assert not (target / "skill-a" / "marker.txt").exists()
+        assert (target / "skill-a" / "from_source.txt").read_text() == "new"
+
+    def test_sync_from_claude_dry_run(self, tmp_path: Path) -> None:
+        source = tmp_path / "claude_skills"
+        source.mkdir()
+
+        skill_a = source / "skill-a"
+        skill_a.mkdir()
+        (skill_a / SKILL_FILE_NAME).write_text("---\nname: skill-a\n---\n")
+
+        target = tmp_path / "agent_skills_dir"
+        installer = SkillInstaller(skills_dir=target)
+
+        result = installer.sync_from_claude(source_dir=source, dry_run=True)
+
+        assert result.success is True
+        assert not (target / "skill-a").exists()
+
 
 class TestParseSkillFile:
     """Tests for SKILL.md parsing."""

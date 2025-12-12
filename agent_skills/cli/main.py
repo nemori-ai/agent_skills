@@ -1,6 +1,6 @@
 """CLI entry point for agent-skills.
 
-Provides commands for installing, uninstalling, and listing skills.
+Provides commands for installing, uninstalling, listing, and syncing skills.
 """
 
 from __future__ import annotations
@@ -34,6 +34,9 @@ Examples:
 
   # Install from a subdirectory of a large repo (sparse checkout)
   agent-skills install https://github.com/metabase/metabase.git --path .claude/skills/clojure-review
+
+  # Sync Claude Code personal skills (~/.claude/skills) into agent-skills
+  agent-skills sync-claude
 
   # Uninstall a skill
   agent-skills uninstall my-skill
@@ -136,6 +139,36 @@ Examples:
         help=f"Skills directory (default: {DEFAULT_SKILLS_DIR})",
     )
 
+    # Sync Claude Code personal skills
+    sync_parser = subparsers.add_parser(
+        "sync-claude",
+        help="Sync Claude Code personal skills into agent-skills directory",
+        description="Copy skills from ~/.claude/skills into the agent-skills skills directory.",
+    )
+    sync_parser.add_argument(
+        "--source", "-s",
+        type=str,
+        default=None,
+        help="Claude skills directory (default: ~/.claude/skills)",
+    )
+    sync_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing skills in target directory",
+    )
+    sync_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show actions without copying files",
+    )
+    sync_parser.add_argument(
+        "--dir", "-d",
+        type=str,
+        dest="subdir",
+        default=None,
+        help=f"Skills directory (default: {DEFAULT_SKILLS_DIR})",
+    )
+
     return parser
 
 
@@ -228,6 +261,34 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync_claude(args: argparse.Namespace) -> int:
+    """Handle the sync-claude command."""
+    installer = SkillInstaller(skills_dir=_get_skills_dir(args))
+
+    print("Syncing Claude Code personal skills...")
+    if args.source:
+        print(f"  Source: {args.source}")
+    if args.dry_run:
+        print("  Dry-run: enabled")
+    if args.overwrite:
+        print("  Overwrite: enabled")
+
+    result = installer.sync_from_claude(
+        source_dir=args.source,
+        overwrite=args.overwrite,
+        dry_run=args.dry_run,
+    )
+
+    if result.success:
+        print(f"✓ {result.message}")
+        if result.skill_path:
+            print(f"  Location: {result.skill_path}")
+        return 0
+    else:
+        print(f"✗ {result.message}", file=sys.stderr)
+        return 1
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     parser = create_parser()
@@ -245,6 +306,8 @@ def main() -> int:
         return cmd_uninstall(args)
     elif args.command == "list":
         return cmd_list(args)
+    elif args.command == "sync-claude":
+        return cmd_sync_claude(args)
     else:
         parser.print_help()
         return 1
